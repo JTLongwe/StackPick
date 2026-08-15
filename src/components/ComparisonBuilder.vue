@@ -10,54 +10,48 @@
           :aria-checked="ecosystem === eco"
           class="eco"
           :class="{ 'is-active': ecosystem === eco }"
-          @click="ecosystem = eco"
+          @click="setEcosystem(eco)"
         >
           {{ eco }}
         </button>
       </div>
 
-      <input
-        v-model="raw"
-        class="builder__input sp-mono"
-        :placeholder="placeholder"
-        :aria-label="`Package names to compare on ${ecosystem}`"
-        spellcheck="false"
-        autocapitalize="off"
-        autocomplete="off"
+      <PackagePicker
+        v-model="packages"
+        :ecosystem="ecosystem"
+        class="builder__picker"
       />
 
-      <button type="submit" class="builder__go" :disabled="!!validation">Compare</button>
+      <button type="submit" class="builder__go" :disabled="packages.length < 2">
+        Compare
+      </button>
     </div>
-
-    <p class="builder__hint" :class="{ 'is-error': raw.trim() && validation }">
-      {{ raw.trim() && validation ? validation : `Comma or space separated, up to ${MAX_PACKAGES}.` }}
-    </p>
   </form>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { specFromQuery, parsePackages, MAX_PACKAGES } from '../lib/spec'
+import PackagePicker from './PackagePicker.vue'
 import type { Ecosystem } from '../types'
 
 const router = useRouter()
 const ecosystem = ref<Ecosystem>('npm')
-const raw = ref('')
+const packages = ref<string[]>([])
 
-const placeholder = computed(() =>
-  ecosystem.value === 'npm' ? 'zod, valibot, arktype' : 'Serilog, NLog'
-)
-
-// Reuses exactly the validation the comparison page and the function apply, so
-// the button can't send the user to a page that will reject them.
-const validation = computed(() => specFromQuery(ecosystem.value, raw.value).error)
+/** Names don't carry across registries, so switching ecosystem clears them
+ *  rather than leaving npm packages selected in a NuGet search. */
+function setEcosystem(eco: Ecosystem) {
+  if (eco === ecosystem.value) return
+  ecosystem.value = eco
+  packages.value = []
+}
 
 function submit() {
-  if (validation.value) return
+  if (packages.value.length < 2) return
   router.push({
     name: 'adhoc',
-    query: { ecosystem: ecosystem.value, packages: parsePackages(raw.value).join(',') },
+    query: { ecosystem: ecosystem.value, packages: packages.value.join(',') },
   })
 }
 </script>
@@ -73,8 +67,13 @@ function submit() {
 .builder__row {
   display: flex;
   gap: 10px;
-  align-items: stretch;
+  align-items: flex-start;
   flex-wrap: wrap;
+}
+
+.builder__picker {
+  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .builder__eco {
@@ -87,7 +86,7 @@ function submit() {
 }
 
 .eco {
-  padding: 6px 14px;
+  padding: 8px 14px;
   border: none;
   border-radius: 7px;
   background: transparent;
@@ -106,24 +105,8 @@ function submit() {
   color: var(--sp-accent);
 }
 
-.builder__input {
-  flex: 1 1 240px;
-  min-width: 0;
-  padding: 10px 14px;
-  border-radius: var(--sp-radius);
-  border: 1px solid var(--sp-border);
-  background: var(--sp-bg);
-  color: var(--sp-text);
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.15s;
-}
-
-.builder__input::placeholder { color: var(--sp-text-muted); }
-.builder__input:focus { border-color: var(--sp-accent); }
-
 .builder__go {
-  padding: 10px 20px;
+  padding: 11px 20px;
   border-radius: var(--sp-radius);
   border: 1px solid var(--sp-accent);
   background: var(--sp-accent);
@@ -141,12 +124,4 @@ function submit() {
   opacity: 0.4;
   cursor: not-allowed;
 }
-
-.builder__hint {
-  margin: 10px 2px 0;
-  font-size: 12px;
-  color: var(--sp-text-muted);
-}
-
-.builder__hint.is-error { color: var(--sp-critical-text); }
 </style>
