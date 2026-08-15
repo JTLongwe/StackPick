@@ -70,6 +70,12 @@
           The verdict below is based on the rest.
         </div>
 
+        <RequirementsBar
+          v-model="requirements"
+          :ecosystem="spec.ecosystem"
+          class="block"
+        />
+
         <TrendChart
           v-if="charted.length"
           :results="charted"
@@ -81,8 +87,11 @@
           :results="results"
           :ecosystem="spec.ecosystem"
           :verdict="verdict"
+          :requirements="requirements"
           class="block"
         />
+
+        <ApiFit :results="results" class="block" />
       </template>
     </template>
   </div>
@@ -95,6 +104,9 @@ import PackagePicker from '../components/PackagePicker.vue'
 import TrendChart from '../components/TrendChart.vue'
 import MetricTable from '../components/MetricTable.vue'
 import VerdictCard from '../components/VerdictCard.vue'
+import RequirementsBar from '../components/RequirementsBar.vue'
+import ApiFit from '../components/ApiFit.vue'
+import { loadRequirements, saveRequirements } from '../lib/requirements'
 import { comparisons } from '../content'
 import { specFromComparison, specFromQuery, type ComparisonSpec } from '../lib/spec'
 import { buildVerdict } from '../lib/verdict'
@@ -105,6 +117,11 @@ const router = useRouter()
 
 const editing = ref(false)
 const draft = ref<string[]>([])
+
+// Constraints belong to the developer, not the comparison, so they persist
+// across pages instead of resetting on every navigation.
+const requirements = ref(loadRequirements())
+watch(requirements, saveRequirements, { deep: true })
 
 const results = ref<PackageResult[] | null>(null)
 const loading = ref(true)

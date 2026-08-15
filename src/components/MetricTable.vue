@@ -41,6 +41,19 @@
           </td>
         </tr>
 
+        <tr v-if="showFit" class="metrics__fit-row">
+          <th scope="row">
+            Fits your setup
+            <span class="metrics__hint" title="Checked against the constraints you set above. Not part of the score.">?</span>
+          </th>
+          <td v-for="res in results" :key="res.name" :class="{ 'is-winner': res.name === winnerName }">
+            <span class="fit" :class="`fit--${fitFor(res).level}`" :title="fitFor(res).reasons.join(' ')">
+              <span class="fit__dot" aria-hidden="true"></span>
+              {{ fitLabel(fitFor(res).level) }}
+            </span>
+          </td>
+        </tr>
+
         <tr v-for="row in rows" :key="row.label">
           <th scope="row">
             {{ row.label }}
@@ -66,15 +79,24 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { PackageResult } from '../types'
+import type { PackageResult, Ecosystem } from '../types'
 import type { Verdict } from '../lib/verdict'
+import { checkFit, hasAnyRequirement, type Requirements } from '../lib/requirements'
 import { formatCompact, formatBytes, formatPercent, formatAge } from '../lib/format'
 
 const props = defineProps<{
   results: PackageResult[]
-  ecosystem: string
+  ecosystem: Ecosystem
   verdict: Verdict
+  requirements: Requirements
 }>()
+
+const showFit = computed(() => hasAnyRequirement(props.requirements, props.ecosystem))
+
+const fitFor = (pkg: PackageResult) => checkFit(pkg, props.requirements, props.ecosystem)
+
+const fitLabel = (level: string) =>
+  level === 'fits' ? 'Yes' : level === 'fails' ? 'No' : 'Unknown'
 
 const winnerName = computed(() =>
   props.verdict.confidence === 'close' ? null : props.verdict.winner?.name ?? null
@@ -126,6 +148,55 @@ const rows = computed<Row[]>(() => {
       { label: 'Bundle size (gzip)', value: r => formatBytes(r.bundleSize?.gzip) },
       { label: 'Types bundled', value: r => (r.typesBundled == null ? 'N/A' : r.typesBundled ? 'Yes' : 'No') }
     )
+  }
+
+  base.push(
+    {
+      label: 'Known vulnerabilities',
+      hint: 'Advisories from OSV affecting the current version specifically, not the package history.',
+      value: r => {
+        const v = r.vulnerabilities
+        if (!v) return 'N/A'
+        if (!v.count) return 'None'
+        return v.maxSeverity ? `${v.count} (${v.maxSeverity.toLowerCase()})` : String(v.count)
+      },
+    },
+    {
+      label: 'Supply chain',
+      hint: 'Total packages installed alongside this one. Every extra package is more code you are trusting.',
+      value: r =>
+        r.transitiveDeps == null
+          ? 'N/A'
+          : `${r.transitiveDeps} package${r.transitiveDeps === 1 ? '' : 's'}`,
+    },
+    {
+      label: 'OpenSSF Scorecard',
+      hint: 'Supply-chain posture of the repo: review practice, branch protection, pinned dependencies, workflow safety.',
+      value: r => (r.scorecard ? `${r.scorecard.score.toFixed(1)} / 10` : 'N/A'),
+    }
+  )
+
+  if (isNpm) {
+    base.push(
+      {
+        label: 'Module format',
+        hint: 'Dual ships both ESM and CommonJS. ESM-only can be awkward in an older CommonJS build.',
+        value: r => {
+          const f = r.compat?.moduleFormat
+          return f === 'dual' ? 'ESM + CJS' : f === 'esm' ? 'ESM only' : f === 'cjs' ? 'CJS only' : 'N/A'
+        },
+      },
+      { label: 'Node requirement', value: r => r.compat?.engines || 'Unstated' }
+    )
+  } else {
+    base.push({
+      label: 'Targets',
+      hint: 'Target frameworks the package ships. netstandard2.0 is consumable almost everywhere.',
+      value: r => {
+        const t = r.compat?.targetFrameworks
+        return t?.length ? t.slice(0, 4).join(', ') + (t.length > 4 ? '…' : '') : 'N/A'
+      },
+    })
   }
 
   base.push(
@@ -253,6 +324,35 @@ const rows = computed<Row[]>(() => {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* Fit is a gate, not a grade, so it uses a plain yes/no rather than the
+   status palette reserved for quality signals. */
+.fit {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 600;
+  color: var(--sp-text-dim);
+}
+
+.fit__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sp-text-muted);
+}
+
+.fit--fits { color: var(--sp-good-text); }
+.fit--fits .fit__dot { background: var(--sp-good); }
+
+.fit--fails { color: var(--sp-critical-text); }
+.fit--fails .fit__dot { background: var(--sp-critical); }
+
+.metrics__fit-row th,
+.metrics__fit-row td {
+  background: rgba(167, 139, 250, 0.05);
+}
+.metrics__fit-row td.is-winner { background: var(--sp-accent-wash); }
 
 /* Status is never carried by color alone. Every flag ships a dot AND a label,
    and the full explanation is in the title attribute. */

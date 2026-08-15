@@ -24,6 +24,36 @@ export interface GithubMetrics {
   topics?: string[]
 }
 
+export type Severity = 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL'
+
+export interface VulnSummary {
+  count: number
+  /** null when the source reported vulnerabilities without grading them. */
+  maxSeverity: Severity | null
+  ids: string[]
+}
+
+/** OpenSSF Scorecard: supply-chain posture for the backing repository. */
+export interface Scorecard {
+  score: number
+  checks: { name: string; score: number }[]
+}
+
+/**
+ * Compatibility facts.
+ *
+ * These are gates, not demerits. A Node 22 requirement doesn't make a package
+ * worse, it makes it inapplicable to someone on Node 18, so none of this feeds
+ * the score. It is checked against the reader's own constraints instead.
+ */
+export interface Compat {
+  engines?: string | null
+  moduleFormat?: 'esm' | 'cjs' | 'dual' | null
+  sideEffects?: boolean | null
+  peerDeps?: string[]
+  targetFrameworks?: string[] | null
+}
+
 /** A package summary from the typeahead search endpoint. */
 export interface PackageSummary {
   name: string
@@ -58,6 +88,22 @@ export interface PackageResult {
   tags?: string[]
   github?: GithubMetrics | null
   bundleSize?: { size: number; gzip: number } | null
+
+  /** Security signals. These do feed the score. */
+  vulnerabilities?: VulnSummary | null
+  scorecard?: Scorecard | null
+  /** Supply-chain surface area. axios pulls 25 packages, ky pulls none. */
+  transitiveDeps?: number | null
+  directDeps?: number | null
+
+  /** Compatibility gates, checked against the reader's constraints. */
+  compat?: Compat
+
+  /** First runnable block from the README. Shown, never ranked. */
+  sample?: string | null
+  /** Distinct major versions in the last three years: migration cost. */
+  majorBumps?: number | null
+
   /** Set instead of the metrics above when the lookup failed. */
   error?: string
 }

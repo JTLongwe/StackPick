@@ -131,6 +131,204 @@ async function getBundlephobia(pkgName: string, version: string) {
   }
 }
 
+/** Generic warm-container memo, shared by the lookups below. */
+function memoize<T>(ttlMs: number) {
+  const store = new Map<string, { at: number; value: T }>();
+  return async (key: string, load: () => Promise<T>): Promise<T> => {
+    const hit = store.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return hit.value;
+    const value = await load();
+    store.set(key, { at: Date.now(), value });
+    return value;
+  };
+}
+
+const osvMemo = memoize<VulnSummary | null>(30 * 60 * 1000);
+const scorecardMemo = memoize<Scorecard | null>(6 * 60 * 60 * 1000);
+const depsMemo = memoize<number | null>(6 * 60 * 60 * 1000);
+
+export interface VulnSummary {
+  count: number;
+  maxSeverity: 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL' | null;
+  ids: string[];
+}
+
+export interface Scorecard {
+  score: number;
+  checks: { name: string; score: number }[];
+}
+
+const SEVERITY_RANK = { LOW: 1, MODERATE: 2, HIGH: 3, CRITICAL: 4 } as const;
+
+/**
+ * Known vulnerabilities affecting this exact version, from OSV.
+ *
+ * Free and unauthenticated, and it covers npm and NuGet from one endpoint. Note
+ * this is version-scoped: a package with a bad history but a clean current
+ * release should not be punished for the past.
+ */
+async function getVulnerabilities(
+  pkgName: string,
+  version: string | undefined,
+  ecosystem: 'npm' | 'nuget'
+): Promise<VulnSummary | null> {
+  if (!version) return null;
+
+  return osvMemo(`${ecosystem}:${pkgName}@${version}`, async () => {
+    try {
+      const res = await fetchWithTimeout('https://api.osv.dev/v1/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package: { name: pkgName, ecosystem: ecosystem === 'npm' ? 'npm' : 'NuGet' },
+          version
+        })
+      }, 5000);
+      if (!res.ok) return null;
+
+      const vulns: any[] = (await readJson(res)).vulns || [];
+      let maxSeverity: VulnSummary['maxSeverity'] = null;
+
+      for (const v of vulns) {
+        const raw = String(v.database_specific?.severity || '').toUpperCase();
+        if (raw in SEVERITY_RANK) {
+          const current = maxSeverity ? SEVERITY_RANK[maxSeverity] : 0;
+          if (SEVERITY_RANK[raw as keyof typeof SEVERITY_RANK] > current) {
+            maxSeverity = raw as VulnSummary['maxSeverity'];
+          }
+        }
+      }
+
+      return { count: vulns.length, maxSeverity, ids: vulns.map(v => v.id).slice(0, 5) };
+    } catch (e) {
+      console.error(`OSV lookup failed for ${pkgName}@${version}`, e);
+      return null;
+    }
+  });
+}
+
+/** OpenSSF Scorecard: supply-chain posture for the backing repo. */
+async function getScorecard(repoUrl: string): Promise<Scorecard | null> {
+  const match = repoUrl.match(/github\.com\/([^/]+)\/([^/#?]+)/i);
+  if (!match) return null;
+
+  const slug = `${match[1]}/${match[2].replace(/\.git$/, '')}`;
+
+  return scorecardMemo(slug.toLowerCase(), async () => {
+    try {
+      const res = await fetchWithTimeout(
+        `https://api.securityscorecards.dev/projects/github.com/${slug}`,
+        {},
+        5000
+      );
+      if (!res.ok) return null;
+
+      const data = await readJson(res);
+      if (typeof data.score !== 'number') return null;
+
+      return {
+        score: data.score,
+        checks: (data.checks || [])
+          .filter((c: any) => typeof c.score === 'number' && c.score >= 0)
+          .map((c: any) => ({ name: c.name, score: c.score })),
+      };
+    } catch (e) {
+      console.error(`Scorecard lookup failed for ${slug}`, e);
+      return null;
+    }
+  });
+}
+
+/**
+ * Transitive dependency count from deps.dev.
+ *
+ * Supply-chain surface area, and one of the sharpest differentiators available:
+ * axios pulls in 25 packages, ky pulls in none.
+ */
+async function getTransitiveDeps(pkgName: string, version: string | undefined): Promise<number | null> {
+  if (!version) return null;
+
+  return depsMemo(`${pkgName}@${version}`, async () => {
+    try {
+      const res = await fetchWithTimeout(
+        `https://api.deps.dev/v3alpha/systems/npm/packages/${encodeURIComponent(pkgName)}/versions/${encodeURIComponent(version)}:dependencies`,
+        {},
+        5000
+      );
+      if (!res.ok) return null;
+
+      const nodes = (await readJson(res)).nodes || [];
+      // Node 0 is the package itself.
+      return Math.max(nodes.length - 1, 0);
+    } catch (e) {
+      console.error(`deps.dev lookup failed for ${pkgName}@${version}`, e);
+      return null;
+    }
+  });
+}
+
+/**
+ * The first runnable code block in the README.
+ *
+ * API fit cannot be scored, only shown. Seeing the call you would actually write
+ * beats any metric for "which of these do I want to live with".
+ */
+function extractSample(readme: string | undefined): string | null {
+  if (!readme) return null;
+
+  const blocks = [...readme.matchAll(
+    /```(?:js|jsx|ts|tsx|javascript|typescript|csharp|cs)\r?\n([\s\S]*?)```/g
+  )].map(m => m[1].trim()).filter(b => b.length >= 12);
+
+  if (!blocks.length) return null;
+
+  // Prefer a block that actually calls something. Many READMEs open with a bare
+  // import line, which shows nothing about the API.
+  const substantive = blocks.find(b => {
+    const lines = b.split('\n').map(l => l.trim()).filter(Boolean);
+    const code = lines.filter(l => !/^(import|const .* = require|using |\/\/)/.test(l));
+    return code.length >= 1 && lines.length >= 2;
+  });
+
+  const chosen = substantive ?? blocks[0];
+  return chosen.split('\n').slice(0, 12).join('\n').slice(0, 600);
+}
+
+/** Which module systems the package actually ships. */
+function moduleFormat(pkg: any): 'esm' | 'cjs' | 'dual' | null {
+  if (!pkg) return null;
+
+  const exp = pkg.exports;
+  const hasImport = JSON.stringify(exp ?? '').includes('"import"');
+  const hasRequire = JSON.stringify(exp ?? '').includes('"require"');
+
+  if (hasImport && hasRequire) return 'dual';
+  if (pkg.type === 'module') return hasRequire ? 'dual' : 'esm';
+  if (pkg.module && pkg.main) return 'dual';
+  return 'cjs';
+}
+
+/**
+ * Distinct major versions released in the window, as a migration-cost signal.
+ *
+ * Two majors in three years means one migration you did not plan for. Counts
+ * distinct majors rather than releases, so 3.0.0 followed by 3.0.1 is one.
+ */
+function countMajorBumps(released: [string, string][], years = 3): number {
+  const cutoff = Date.now() - years * MS_PER_YEAR;
+  const majors = new Set<string>();
+
+  for (const [version, date] of released) {
+    const t = Date.parse(date);
+    if (Number.isNaN(t) || t < cutoff) continue;
+    const m = /^(\d+)\./.exec(version);
+    // 0.x releases signal pre-1.0 instability rather than a migration.
+    if (m && m[1] !== '0') majors.add(m[1]);
+  }
+
+  return Math.max(majors.size - 1, 0);
+}
+
 /**
  * Group daily npm downloads into 7-day buckets.
  *
@@ -202,9 +400,12 @@ async function fetchNpmData(pkgName: string) {
     const repoUrl = meta.repository?.url || '';
 
     // Independent lookups. Run them together rather than back to back.
-    const [githubMetrics, bundleSize] = await Promise.all([
+    const [githubMetrics, bundleSize, vulnerabilities, scorecard, transitiveDeps] = await Promise.all([
       getGithubMetrics(repoUrl),
-      latestVersion ? getBundlephobia(pkgName, latestVersion) : Promise.resolve(null)
+      latestVersion ? getBundlephobia(pkgName, latestVersion) : Promise.resolve(null),
+      getVulnerabilities(pkgName, latestVersion, 'npm'),
+      getScorecard(repoUrl),
+      getTransitiveDeps(pkgName, latestVersion)
     ]);
 
     const typesBundled = !!(latestVersionData?.types || latestVersionData?.typings);
@@ -213,9 +414,9 @@ async function fetchNpmData(pkgName: string) {
 
     // meta.time is a map of version -> ISO date, plus "created"/"modified" keys
     // that aren't versions. It was already being fetched for lastPublish alone.
-    const releaseDates = Object.entries(meta.time || {})
-      .filter(([v]) => v !== 'created' && v !== 'modified')
-      .map(([, d]) => d as string);
+    const released = Object.entries(meta.time || {})
+      .filter(([v]) => v !== 'created' && v !== 'modified') as [string, string][];
+    const releaseDates = released.map(([, d]) => d);
 
     return {
       name: pkgName,
@@ -235,7 +436,27 @@ async function fetchNpmData(pkgName: string) {
       license: meta.license || null,
       tags: Array.isArray(latestVersionData?.keywords) ? latestVersionData.keywords : [],
       github: githubMetrics,
-      bundleSize
+      bundleSize,
+
+      // Security. Scored, because an unpatched hole is a real reason not to pick.
+      vulnerabilities,
+      scorecard,
+      transitiveDeps,
+      directDeps: Object.keys(latestVersionData?.dependencies || {}).length,
+
+      // Compatibility. Gates rather than demerits: a Node 22 requirement doesn't
+      // make a package worse, it makes it inapplicable to someone on Node 18.
+      compat: {
+        engines: latestVersionData?.engines?.node || null,
+        moduleFormat: moduleFormat(latestVersionData),
+        sideEffects: latestVersionData?.sideEffects === false ? false : null,
+        peerDeps: Object.keys(latestVersionData?.peerDependencies || {}),
+        targetFrameworks: null,
+      },
+
+      // API fit. Shown, never ranked. What it is worth depends on who is asking.
+      sample: extractSample(meta.readme),
+      majorBumps: countMajorBumps(released),
     };
   } catch (e) {
     console.error(`Error fetching NPM data for ${pkgName}`, e);
@@ -251,34 +472,66 @@ async function fetchNpmData(pkgName: string) {
  * .NET comparison. The registration index has them; for packages with many
  * versions its pages are not inlined, so the newest page is followed once.
  */
-async function getNugetReleaseDates(pkgName: string): Promise<string[]> {
+interface NugetRegistration {
+  dates: string[];
+  targetFrameworks: string[];
+  vulnerabilities: number;
+  deprecated: string | null;
+  latestEntryVersion: string | null;
+}
+
+async function getNugetReleaseDates(pkgName: string): Promise<NugetRegistration> {
+  const empty: NugetRegistration = {
+    dates: [],
+    targetFrameworks: [],
+    vulnerabilities: 0,
+    deprecated: null,
+    latestEntryVersion: null,
+  };
   try {
     const res = await fetchWithTimeout(
       `https://api.nuget.org/v3/registration5-gz-semver2/${encodeURIComponent(pkgName.toLowerCase())}/index.json`
     );
-    if (!res.ok) return [];
+    if (!res.ok) return empty;
 
     const index = await readJson(res);
     const pages: any[] = index.items || [];
-    if (!pages.length) return [];
+    if (!pages.length) return empty;
 
     const newest = pages[pages.length - 1];
     let leaves: any[] = newest.items || [];
 
     if (!leaves.length && newest['@id']) {
       const pageRes = await fetchWithTimeout(newest['@id']);
-      if (!pageRes.ok) return [];
+      if (!pageRes.ok) return empty;
       leaves = (await readJson(pageRes)).items || [];
     }
 
-    return leaves
-      .map(leaf => leaf.catalogEntry?.published)
-      .filter((d: unknown): d is string => typeof d === 'string')
-      // NuGet marks unlisted versions with the sentinel year 1900.
-      .filter(d => !d.startsWith('1900'));
+    const entries = leaves.map(leaf => leaf.catalogEntry).filter(Boolean);
+    const latest = entries[entries.length - 1];
+
+    // The same walk yields target frameworks, deprecation and vulnerabilities,
+    // none of which cost an extra request.
+    const targetFrameworks: string[] = (latest?.dependencyGroups || [])
+      .map((g: any) => g.targetFramework)
+      .filter((f: unknown): f is string => typeof f === 'string' && !!f);
+
+    return {
+      dates: entries
+        .map((e: any) => e.published)
+        .filter((d: unknown): d is string => typeof d === 'string')
+        // NuGet marks unlisted versions with the sentinel year 1900.
+        .filter((d: string) => !d.startsWith('1900')),
+      targetFrameworks: [...new Set(targetFrameworks)],
+      vulnerabilities: (latest?.vulnerabilities || []).length,
+      deprecated: latest?.deprecation
+        ? latest.deprecation.message || 'This package is deprecated.'
+        : null,
+      latestEntryVersion: latest?.version ?? null,
+    };
   } catch (e) {
     console.error(`NuGet registration error for ${pkgName}:`, e);
-    return [];
+    return empty;
   }
 }
 
@@ -295,15 +548,16 @@ async function fetchNugetData(pkgName: string) {
     if (!pkgData) throw new Error(`Package not found: ${pkgName}`);
 
     const repoUrl = pkgData.projectUrl || '';
-    const [githubMetrics, releaseDates] = await Promise.all([
+    const [githubMetrics, registration, scorecard, vulnerabilities] = await Promise.all([
       getGithubMetrics(repoUrl),
-      getNugetReleaseDates(pkgName)
+      getNugetReleaseDates(pkgName),
+      getScorecard(repoUrl),
+      getVulnerabilities(pkgName, pkgData.version, 'nuget')
     ]);
 
     // Cumulative downloads by version for the chart
     const versions = pkgData.versions || [];
-
-    const sortedDates = [...releaseDates].sort();
+    const sortedDates = [...registration.dates].sort();
 
     return {
       name: pkgName,
@@ -313,15 +567,38 @@ async function fetchNugetData(pkgName: string) {
       // NuGet publishes no download time series, so momentum is genuinely
       // unavailable here rather than zero. The UI must say so, not imply decline.
       growthYoY: null,
-      releasesLastYear: releaseDates.length ? countRecentReleases(releaseDates) : null,
+      releasesLastYear: registration.dates.length ? countRecentReleases(registration.dates) : null,
       lastPublish: sortedDates.length ? sortedDates[sortedDates.length - 1] : null,
       latestVersion: pkgData.version,
       typesBundled: null, // Not applicable
-      deprecated: null,
+      deprecated: registration.deprecated,
       license: pkgData.licenseUrl ? 'See License URL' : null, // Simplification
       tags: Array.isArray(pkgData.tags) ? pkgData.tags : [],
       github: githubMetrics,
-      bundleSize: null // Not applicable
+      bundleSize: null, // Not applicable
+
+      // NuGet ships its own vulnerability list on the registration entry; prefer
+      // OSV when it answered, since it carries severity.
+      vulnerabilities: vulnerabilities ?? (registration.vulnerabilities
+        ? { count: registration.vulnerabilities, maxSeverity: null, ids: [] }
+        : null),
+      scorecard,
+      transitiveDeps: null, // deps.dev's NuGet coverage is not reliable enough to show
+      directDeps: null,
+
+      compat: {
+        engines: null,
+        moduleFormat: null,
+        sideEffects: null,
+        peerDeps: [],
+        // The decisive compatibility fact for a .NET consumer.
+        targetFrameworks: registration.targetFrameworks.length
+          ? registration.targetFrameworks
+          : null,
+      },
+
+      sample: null, // NuGet's search API carries no README
+      majorBumps: null,
     };
   } catch (e) {
     console.error(`Error fetching NuGet data for ${pkgName}`, e);

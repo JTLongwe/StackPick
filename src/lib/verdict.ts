@@ -24,6 +24,7 @@ export interface ScoreBreakdown {
   adoption: number | null
   maintenance: number | null
   community: number | null
+  security: number | null
   penalty: number
   flags: Flag[]
 }
@@ -46,10 +47,11 @@ export interface Verdict {
 }
 
 const WEIGHTS = {
-  momentum: 0.35,
-  adoption: 0.25,
-  maintenance: 0.25,
-  community: 0.15,
+  momentum: 0.30,
+  adoption: 0.20,
+  maintenance: 0.20,
+  community: 0.10,
+  security: 0.20,
 }
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n))
@@ -109,6 +111,44 @@ function communityScore(pkg: PackageResult, maxStars: number): number | null {
   return parts.reduce((a, b) => a + b, 0) / parts.length
 }
 
+/**
+ * Security posture: known vulnerabilities, supply-chain surface and the
+ * OpenSSF Scorecard, blended.
+ *
+ * Unlike compatibility, this genuinely is a quality signal, so it counts. A
+ * clean scorecard on a package with an unpatched critical still scores badly,
+ * because the vulnerability term dominates.
+ */
+function securityScore(pkg: PackageResult): number | null {
+  const parts: number[] = []
+
+  const vulns = pkg.vulnerabilities
+  if (vulns) {
+    if (vulns.count === 0) {
+      parts.push(1)
+    } else {
+      const floor =
+        vulns.maxSeverity === 'CRITICAL' ? 0
+        : vulns.maxSeverity === 'HIGH' ? 0.15
+        : vulns.maxSeverity === 'MODERATE' ? 0.45
+        : vulns.maxSeverity === 'LOW' ? 0.7
+        : 0.35 // graded by nobody, but present
+      // More findings drag it further down, without ever going below the floor.
+      parts.push(clamp01(floor * (1 / (1 + (vulns.count - 1) * 0.15))))
+    }
+  }
+
+  if (pkg.scorecard) parts.push(clamp01(pkg.scorecard.score / 10))
+
+  // Supply-chain surface. Zero deps is ideal; 50+ is a lot of trust to extend.
+  if (pkg.transitiveDeps != null) {
+    parts.push(clamp01(1 - Math.log10(pkg.transitiveDeps + 1) / Math.log10(51)))
+  }
+
+  if (!parts.length) return null
+  return parts.reduce((a, b) => a + b, 0) / parts.length
+}
+
 function collectFlags(pkg: PackageResult): Flag[] {
   const flags: Flag[] = []
 
@@ -143,6 +183,30 @@ function collectFlags(pkg: PackageResult): Flag[] {
     })
   }
 
+  const vulns = pkg.vulnerabilities
+  if (vulns?.count) {
+    const sev = vulns.maxSeverity
+    flags.push({
+      label: sev === 'CRITICAL' || sev === 'HIGH' ? `${sev} vulnerability` : 'Known vulnerabilities',
+      detail: `${vulns.count} advisory${vulns.count === 1 ? '' : 'ies'} affecting the current version${vulns.ids.length ? `: ${vulns.ids.join(', ')}` : '.'}`,
+      tone: sev === 'CRITICAL' || sev === 'HIGH' ? 'bad' : 'neutral',
+    })
+  }
+
+  if (pkg.transitiveDeps != null && pkg.transitiveDeps === 0) {
+    flags.push({
+      label: 'No dependencies',
+      detail: 'Pulls in nothing else, so the supply-chain surface is just this package.',
+      tone: 'good',
+    })
+  } else if (pkg.transitiveDeps != null && pkg.transitiveDeps >= 30) {
+    flags.push({
+      label: `${pkg.transitiveDeps} deps`,
+      detail: `Installing this pulls in ${pkg.transitiveDeps} packages in total.`,
+      tone: 'neutral',
+    })
+  }
+
   if (pkg.growthYoY != null && pkg.growthYoY <= -20) {
     flags.push({
       label: 'Declining',
@@ -167,6 +231,10 @@ function penaltyFor(pkg: PackageResult): number {
   if (pkg.github?.archived) penalty *= 0.25
   const age = monthsSince(pkg.lastPublish)
   if (age != null && age >= 24) penalty *= 0.6
+  // An unpatched critical is a reason not to pick something, not a rounding
+  // error in a weighted average.
+  if (pkg.vulnerabilities?.maxSeverity === 'CRITICAL') penalty *= 0.4
+  else if (pkg.vulnerabilities?.maxSeverity === 'HIGH') penalty *= 0.65
   return penalty
 }
 
@@ -213,6 +281,7 @@ export function buildVerdict(results: PackageResult[], ecosystem: string): Verdi
       adoption: adoptionScore(pkg.weeklyDownloads, maxDownloads),
       maintenance: maintenanceScore(pkg),
       community: communityScore(pkg, maxStars),
+      security: securityScore(pkg),
     }
     const penalty = penaltyFor(pkg)
 
@@ -289,6 +358,25 @@ function buildReasons(
         tone: 'neutral',
       })
     }
+  }
+
+  if (runnerUp.vulnerabilities?.count && !winner.vulnerabilities?.count) {
+    const sev = runnerUp.vulnerabilities.maxSeverity
+    reasons.push({
+      text: `${runnerUp.name} has ${runnerUp.vulnerabilities.count} known ${sev ? sev.toLowerCase() + ' ' : ''}advisory against its current version; ${winner.name} has none.`,
+      tone: 'bad',
+    })
+  }
+
+  if (
+    winner.transitiveDeps != null &&
+    runnerUp.transitiveDeps != null &&
+    runnerUp.transitiveDeps - winner.transitiveDeps >= 10
+  ) {
+    reasons.push({
+      text: `${winner.name} pulls in ${winner.transitiveDeps} packages against ${runnerUp.transitiveDeps} for ${runnerUp.name}.`,
+      tone: 'good',
+    })
   }
 
   if (runnerUp.deprecated) {
