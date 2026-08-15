@@ -25,10 +25,18 @@ export interface PackageResult {
   weeklyDownloads?: number
   trend?: number[]
   trendDates?: string[]
+  /**
+   * Year-over-year change in downloads, as a percentage. null when the
+   * ecosystem publishes no time series (NuGet) — which is not the same as 0.
+   */
+  growthYoY?: number | null
+  releasesLastYear?: number | null
   lastPublish?: string | null
   latestVersion?: string
   /** null when the ecosystem has no equivalent concept. */
   typesBundled?: boolean | null
+  /** The registry's own deprecation notice, when the author set one. */
+  deprecated?: string | null
   license?: string | null
   github?: GithubMetrics | null
   bundleSize?: { size: number; gzip: number } | null

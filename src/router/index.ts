@@ -10,6 +10,14 @@ const router = createRouter({
       component: Home
     },
     {
+      // Ad-hoc: /compare?ecosystem=npm&packages=zod,valibot,arktype
+      // Declared before the curated route so it isn't swallowed by :id.
+      path: '/compare',
+      name: 'adhoc',
+      component: () => import('../views/Comparison.vue')
+    },
+    {
+      // Curated, from src/content/comparisons/*.yaml
       // Lazy so Chart.js only downloads once someone opens a comparison.
       path: '/compare/:id',
       name: 'comparison',

@@ -114,6 +114,38 @@ function aggregateNpmDownloads(daily: { day: string, downloads: number }[]) {
   return weekly;
 }
 
+/**
+ * Year-over-year change in download volume, as a percentage.
+ *
+ * Compares the newest 12 weeks against the oldest 12 of the same 52-week window
+ * rather than single weeks at each end, so one holiday lull or one CI stampede
+ * doesn't decide the number. This is the signal totals hide: a package can hold
+ * an enormous download count for years while every trend line points down.
+ */
+function computeGrowth(weekly: number[]): number | null {
+  const WINDOW = 12;
+  if (weekly.length < WINDOW * 2) return null;
+
+  const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const past = mean(weekly.slice(0, WINDOW));
+  const recent = mean(weekly.slice(-WINDOW));
+
+  if (past <= 0) return null;
+  return ((recent - past) / past) * 100;
+}
+
+const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
+
+/** How many versions shipped in the last year — alive vs. embalmed. */
+function countRecentReleases(dates: (string | undefined)[]): number {
+  const cutoff = Date.now() - MS_PER_YEAR;
+  return dates.filter(d => {
+    if (!d) return false;
+    const t = Date.parse(d);
+    return !Number.isNaN(t) && t >= cutoff;
+  }).length;
+}
+
 async function fetchNpmData(pkgName: string) {
   try {
     const [metaRes, rangeRes, pointRes] = await Promise.all([
@@ -140,15 +172,29 @@ async function fetchNpmData(pkgName: string) {
 
     const typesBundled = !!(latestVersionData?.types || latestVersionData?.typings);
     const weeklyTrend = aggregateNpmDownloads(range.downloads || []);
+    const trend = weeklyTrend.map(w => w.downloads);
+
+    // meta.time is a map of version -> ISO date, plus "created"/"modified" keys
+    // that aren't versions. It was already being fetched for lastPublish alone.
+    const releaseDates = Object.entries(meta.time || {})
+      .filter(([v]) => v !== 'created' && v !== 'modified')
+      .map(([, d]) => d as string);
 
     return {
       name: pkgName,
       weeklyDownloads: point.downloads || 0,
-      trend: weeklyTrend.map(w => w.downloads),
+      trend,
       trendDates: weeklyTrend.map(w => w.date),
+      growthYoY: computeGrowth(trend),
+      releasesLastYear: countRecentReleases(releaseDates),
       lastPublish: meta.time?.[latestVersion] || null,
       latestVersion,
       typesBundled,
+      // npm's own deprecation notice, set by the author. Already present in the
+      // metadata this function reads; previously ignored entirely.
+      deprecated: typeof latestVersionData?.deprecated === 'string'
+        ? latestVersionData.deprecated
+        : latestVersionData?.deprecated ? 'This package is deprecated.' : null,
       license: meta.license || null,
       github: githubMetrics,
       bundleSize
@@ -156,6 +202,45 @@ async function fetchNpmData(pkgName: string) {
   } catch (e) {
     console.error(`Error fetching NPM data for ${pkgName}`, e);
     return { name: pkgName, error: 'Failed to fetch npm data' };
+  }
+}
+
+/**
+ * Publish dates for a NuGet package's most recent versions.
+ *
+ * The search endpoint returns versions and download counts but no dates, which
+ * is why "Last Publish" and release cadence were previously blank for every
+ * .NET comparison. The registration index has them; for packages with many
+ * versions its pages are not inlined, so the newest page is followed once.
+ */
+async function getNugetReleaseDates(pkgName: string): Promise<string[]> {
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.nuget.org/v3/registration5-gz-semver2/${encodeURIComponent(pkgName.toLowerCase())}/index.json`
+    );
+    if (!res.ok) return [];
+
+    const index = await readJson(res);
+    const pages: any[] = index.items || [];
+    if (!pages.length) return [];
+
+    const newest = pages[pages.length - 1];
+    let leaves: any[] = newest.items || [];
+
+    if (!leaves.length && newest['@id']) {
+      const pageRes = await fetchWithTimeout(newest['@id']);
+      if (!pageRes.ok) return [];
+      leaves = (await readJson(pageRes)).items || [];
+    }
+
+    return leaves
+      .map(leaf => leaf.catalogEntry?.published)
+      .filter((d: unknown): d is string => typeof d === 'string')
+      // NuGet marks unlisted versions with the sentinel year 1900.
+      .filter(d => !d.startsWith('1900'));
+  } catch (e) {
+    console.error(`NuGet registration error for ${pkgName}:`, e);
+    return [];
   }
 }
 
@@ -172,19 +257,29 @@ async function fetchNugetData(pkgName: string) {
     if (!pkgData) throw new Error(`Package not found: ${pkgName}`);
 
     const repoUrl = pkgData.projectUrl || '';
-    const githubMetrics = await getGithubMetrics(repoUrl);
+    const [githubMetrics, releaseDates] = await Promise.all([
+      getGithubMetrics(repoUrl),
+      getNugetReleaseDates(pkgName)
+    ]);
 
     // Cumulative downloads by version for the chart
     const versions = pkgData.versions || [];
+
+    const sortedDates = [...releaseDates].sort();
 
     return {
       name: pkgName,
       weeklyDownloads: pkgData.totalDownloads, // Repurposing column for total downloads in NuGet
       trend: versions.map((v: any) => v.downloads),
       trendDates: versions.map((v: any) => v.version),
-      lastPublish: null, // NuGet search doesn't easily return last publish date per version in this endpoint
+      // NuGet publishes no download time series, so momentum is genuinely
+      // unavailable here rather than zero — the UI must say so, not imply decline.
+      growthYoY: null,
+      releasesLastYear: releaseDates.length ? countRecentReleases(releaseDates) : null,
+      lastPublish: sortedDates.length ? sortedDates[sortedDates.length - 1] : null,
       latestVersion: pkgData.version,
       typesBundled: null, // Not applicable
+      deprecated: null,
       license: pkgData.licenseUrl ? 'See License URL' : null, // Simplification
       github: githubMetrics,
       bundleSize: null // Not applicable

@@ -1,7 +1,50 @@
 /*
- * Vuetify owns layout, typography and theming (see the theme in main.ts).
- * Keep this file to global resets only — anything more specific fights v-app.
+ * StackPick design tokens.
+ *
+ * Vuetify owns component internals and layout; this file owns the palette and
+ * the few global rules. The app is deliberately dark-only — it is a dense data
+ * tool, and a single committed surface lets the chart palette be validated
+ * against one known background instead of two.
  */
+
+:root {
+  /* Surfaces — near-black, cool-shifted so the accent reads warm against it */
+  --sp-bg: #0a0c10;
+  --sp-surface: #14181f;
+  --sp-surface-2: #1b2029;
+  --sp-surface-3: #232936;
+  --sp-border: #262c36;
+  --sp-border-strong: #37404f;
+
+  /* Ink */
+  --sp-text: #e6eaf0;
+  --sp-text-dim: #96a0b0;
+  --sp-text-muted: #6b7585;
+
+  /* Accent — violet, chosen to sit away from every chart series hue so an
+     interactive element is never mistaken for data */
+  --sp-accent: #a78bfa;
+  --sp-accent-dim: #7c5cf0;
+  --sp-accent-wash: rgba(167, 139, 250, 0.12);
+
+  /* Status — reserved, never reused as a series color */
+  --sp-good: #0ca30c;
+  --sp-good-text: #4ade80;
+  --sp-warning: #fab219;
+  --sp-serious: #ec835a;
+  --sp-critical: #d03b3b;
+  --sp-critical-text: #f87171;
+
+  /* Chart chrome, validated against --sp-surface */
+  --sp-grid: #222836;
+  --sp-axis: #39414f;
+
+  --sp-radius: 10px;
+  --sp-radius-lg: 14px;
+
+  --sp-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;
+  --sp-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
 
 html,
 body {
@@ -11,10 +54,47 @@ body {
 
 body {
   color-scheme: dark;
-  background-color: #121212;
-  font-family: Roboto, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica,
-    Arial, sans-serif;
+  background-color: var(--sp-bg);
+  font-family: var(--sp-sans);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Package names, versions and metrics are identifiers — monospace makes them
+   scannable in a column and stops them reading as prose. */
+.sp-mono {
+  font-family: var(--sp-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numbers that must line up vertically in a table column. */
+.sp-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.sp-dim {
+  color: var(--sp-text-dim);
+}
+
+.sp-muted {
+  color: var(--sp-text-muted);
+}
+
+/* Wide tables and charts scroll inside their own container rather than
+   pushing the page sideways. */
+.sp-scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+::selection {
+  background: var(--sp-accent-wash);
+  color: var(--sp-text);
+}
+
+/* A restrained scrollbar; the default light one breaks the dark surface. */
+* {
+  scrollbar-color: var(--sp-border-strong) transparent;
+  scrollbar-width: thin;
 }

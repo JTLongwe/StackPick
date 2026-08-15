@@ -1,176 +1,133 @@
 <template>
-  <div v-if="!comparison" class="py-10 text-center">
-    <h1 class="text-h5 mb-2">Comparison not found</h1>
-    <p class="text-grey mb-6">No comparison is defined for "{{ route.params.id }}".</p>
-    <v-btn color="primary" variant="tonal" to="/">Back to all comparisons</v-btn>
-  </div>
-
-  <div v-else>
-    <h1 class="text-h4 mb-2">{{ comparison.title }}</h1>
-    <p class="text-h6 text-grey-lighten-1 mb-4">{{ comparison.question }}</p>
-    <v-alert v-if="comparison.note" type="info" variant="tonal" class="mb-8">
-      {{ comparison.note }}
-    </v-alert>
-
-    <div v-if="loading" class="text-center py-10">
-      <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-      <div class="mt-4">Fetching live registry data...</div>
+  <div class="page">
+    <!-- Nothing resolved: a bad curated id, or malformed ad-hoc parameters. -->
+    <div v-if="!spec" class="empty">
+      <h1 class="empty__title">{{ specError || 'Comparison not found' }}</h1>
+      <p class="empty__body">
+        <template v-if="!specError">
+          No comparison is defined for "{{ route.params.id }}".
+        </template>
+        <template v-else>Check the packages in the address bar and try again.</template>
+      </p>
+      <RouterLink to="/" class="btn btn--primary">Back to all comparisons</RouterLink>
     </div>
 
-    <v-alert v-else-if="error" type="error" variant="tonal">
-      {{ error }}
-      <template #append>
-        <v-btn variant="text" size="small" @click="load">Retry</v-btn>
+    <template v-else>
+      <header class="head">
+        <div class="head__main">
+          <span v-if="!spec.curated" class="head__eyebrow">Custom comparison</span>
+          <h1 class="head__title">{{ spec.title }}</h1>
+          <p v-if="spec.question" class="head__question">{{ spec.question }}</p>
+          <div class="head__pkgs">
+            <span v-for="pkg in spec.packages" :key="pkg" class="pill sp-mono">{{ pkg }}</span>
+            <span class="pill pill--eco">{{ spec.ecosystem }}</span>
+          </div>
+        </div>
+
+        <button class="btn btn--ghost" type="button" @click="share">
+          {{ copied ? 'Link copied' : 'Copy link' }}
+        </button>
+      </header>
+
+      <p v-if="spec.note" class="note">{{ spec.note }}</p>
+
+      <div v-if="loading" class="loading">
+        <span class="loading__spinner" aria-hidden="true"></span>
+        <span>Reading live registry data…</span>
+      </div>
+
+      <div v-else-if="error" class="alert alert--error">
+        <div>{{ error }}</div>
+        <button class="btn btn--ghost" type="button" @click="load">Retry</button>
+      </div>
+
+      <template v-else-if="results && verdict">
+        <VerdictCard :verdict="verdict" class="block" />
+
+        <div v-if="failed.length" class="alert alert--warn block">
+          Could not load registry data for
+          <strong class="sp-mono">{{ failed.map(r => r.name).join(', ') }}</strong>.
+          The verdict below is based on the rest.
+        </div>
+
+        <TrendChart
+          v-if="charted.length"
+          :results="charted"
+          :ecosystem="spec.ecosystem"
+          class="block"
+        />
+
+        <MetricTable
+          :results="results"
+          :ecosystem="spec.ecosystem"
+          :verdict="verdict"
+          class="block"
+        />
       </template>
-    </v-alert>
-
-    <template v-else-if="results">
-      <v-alert v-if="failed.length" type="warning" variant="tonal" class="mb-4">
-        Could not load registry data for
-        {{ failed.map(r => r.name).join(', ') }}. The columns below are incomplete.
-      </v-alert>
-
-      <trend-chart
-        v-if="charted.length"
-        :results="charted"
-        :ecosystem="comparison.ecosystem"
-        class="mb-8"
-      />
-
-      <v-table class="elevation-1 bg-surface">
-        <thead>
-          <tr>
-            <th class="text-left font-weight-bold">Metric</th>
-            <th v-for="res in results" :key="res.name" class="text-center font-weight-bold">
-              {{ res.name }}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td class="font-weight-bold">
-              {{ comparison.ecosystem === 'npm' ? 'Weekly Downloads' : 'Total Downloads' }}
-            </td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              {{ res.weeklyDownloads?.toLocaleString() ?? 'N/A' }}
-            </td>
-          </tr>
-          <tr>
-            <td class="font-weight-bold">Latest Version</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              {{ res.latestVersion || 'N/A' }}
-            </td>
-          </tr>
-          <tr>
-            <td class="font-weight-bold">Last Publish</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              {{ res.lastPublish ? new Date(res.lastPublish).toLocaleDateString() : 'N/A' }}
-            </td>
-          </tr>
-          <tr>
-            <td class="font-weight-bold">License</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              {{ res.license || 'N/A' }}
-            </td>
-          </tr>
-          <tr v-if="comparison.ecosystem === 'npm'">
-            <td class="font-weight-bold">Types Bundled</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              <v-icon
-                v-if="res.typesBundled != null"
-                :color="res.typesBundled ? 'success' : 'error'"
-                :icon="res.typesBundled ? mdiCheck : mdiClose"
-              />
-              <span v-else class="text-grey">N/A</span>
-            </td>
-          </tr>
-          <tr v-if="comparison.ecosystem === 'npm'">
-            <td class="font-weight-bold">Bundle Size (min+gzip)</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              <span v-if="res.bundleSize">
-                {{ formatBytes(res.bundleSize.gzip) }}
-              </span>
-              <span v-else class="text-grey">unavailable</span>
-            </td>
-          </tr>
-          <tr>
-            <td class="font-weight-bold">GitHub Stars</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              {{ res.github?.stars?.toLocaleString() ?? 'N/A' }}
-            </td>
-          </tr>
-          <tr>
-            <td class="font-weight-bold">Open/Closed Issues</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              <span v-if="res.github">
-                {{ res.github.openIssues?.toLocaleString() }} /
-                {{ res.github.closedIssues?.toLocaleString() }}
-              </span>
-              <span v-else class="text-grey">N/A</span>
-            </td>
-          </tr>
-          <tr>
-            <td class="font-weight-bold">Archived?</td>
-            <td v-for="res in results" :key="res.name" class="text-center">
-              <v-chip v-if="res.github?.archived" color="error" class="font-weight-bold" variant="flat">
-                ARCHIVED
-              </v-chip>
-              <span v-else-if="res.github" class="text-grey">Active</span>
-              <span v-else class="text-grey">N/A</span>
-            </td>
-          </tr>
-        </tbody>
-      </v-table>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { mdiCheck, mdiClose } from '@mdi/js'
+import { ref, computed, watch } from 'vue'
+import { useRoute, RouterLink } from 'vue-router'
 import TrendChart from '../components/TrendChart.vue'
+import MetricTable from '../components/MetricTable.vue'
+import VerdictCard from '../components/VerdictCard.vue'
 import { comparisons } from '../content'
+import { specFromComparison, specFromQuery, type ComparisonSpec } from '../lib/spec'
+import { buildVerdict } from '../lib/verdict'
 import type { PackageResult } from '../types'
 
 const route = useRoute()
 
-const comparison = computed(() => comparisons.find(c => c.id === route.params.id))
-
 const results = ref<PackageResult[] | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
+const copied = ref(false)
 
-// Packages the API could not resolve at all — flagged so the table's N/A cells
-// read as "lookup failed" rather than "this package has no stars".
+/** One page serves both curated (/compare/:id) and ad-hoc (/compare?…) routes. */
+const parsedQuery = computed(() =>
+  route.params.id ? null : specFromQuery(route.query.ecosystem, route.query.packages)
+)
+
+const spec = computed<ComparisonSpec | null>(() => {
+  if (route.params.id) {
+    const found = comparisons.find(c => c.id === route.params.id)
+    return found ? specFromComparison(found) : null
+  }
+  return parsedQuery.value?.spec ?? null
+})
+
+const specError = computed(() => parsedQuery.value?.error ?? null)
+
 const failed = computed(() => results.value?.filter(r => r.error) ?? [])
 const charted = computed(() => results.value?.filter(r => r.trend?.length) ?? [])
 
-function formatBytes(bytes: number, decimals = 2) {
-  if (!+bytes) return '0 Bytes'
-  const k = 1024
-  const dm = decimals < 0 ? 0 : decimals
-  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
-}
+const verdict = computed(() =>
+  results.value && spec.value ? buildVerdict(results.value, spec.value.ecosystem) : null
+)
 
 async function load() {
-  if (!comparison.value) {
+  if (!spec.value) {
     loading.value = false
     return
   }
 
   loading.value = true
   error.value = null
+  results.value = null
 
   try {
     const params = new URLSearchParams({
-      ecosystem: comparison.value.ecosystem,
-      packages: comparison.value.packages.join(','),
+      ecosystem: spec.value.ecosystem,
+      packages: spec.value.packages.join(','),
     })
     const res = await fetch(`/api/compare?${params}`)
-    if (!res.ok) throw new Error(`Registry lookup failed (HTTP ${res.status})`)
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null)
+      throw new Error(detail?.error || `Registry lookup failed (HTTP ${res.status})`)
+    }
     // If the function is missing, the SPA fallback serves index.html with a 200.
     // Without this check that surfaces as an opaque JSON parse error.
     if (!res.headers.get('content-type')?.includes('application/json')) {
@@ -184,5 +141,207 @@ async function load() {
   }
 }
 
-onMounted(load)
+async function share() {
+  try {
+    await navigator.clipboard.writeText(window.location.href)
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  } catch {
+    // Clipboard is blocked outside a secure context; the URL is in the address
+    // bar either way, so this is not worth an error state.
+  }
+}
+
+// Re-fetch when the route changes, since both routes share this component and
+// navigating between comparisons does not remount it.
+watch(
+  () => [route.params.id, route.query.packages, route.query.ecosystem],
+  load,
+  { immediate: true }
+)
 </script>
+
+<style scoped>
+.page {
+  display: block;
+}
+
+.block {
+  margin-top: 20px;
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.head__eyebrow {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sp-text-muted);
+  margin-bottom: 8px;
+}
+
+.head__title {
+  margin: 0;
+  font-size: clamp(28px, 5vw, 40px);
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  color: var(--sp-text);
+}
+
+.head__question {
+  margin: 10px 0 0;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--sp-text-dim);
+  max-width: 62ch;
+}
+
+.head__pkgs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-surface);
+  font-size: 12px;
+  color: var(--sp-text-dim);
+}
+
+.pill--eco {
+  border-style: dashed;
+  color: var(--sp-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.note {
+  margin: 20px 0 0;
+  padding: 14px 16px;
+  border: 1px solid var(--sp-border);
+  border-left: 2px solid var(--sp-accent);
+  border-radius: var(--sp-radius);
+  background: var(--sp-surface);
+  color: var(--sp-text-dim);
+  font-size: 14px;
+  line-height: 1.6;
+  max-width: 74ch;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--sp-radius);
+  border: 1px solid var(--sp-border-strong);
+  background: transparent;
+  color: var(--sp-text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.btn:hover {
+  border-color: var(--sp-accent);
+  color: var(--sp-accent);
+}
+
+.btn--primary {
+  background: var(--sp-accent);
+  border-color: var(--sp-accent);
+  color: #12091f;
+}
+.btn--primary:hover {
+  background: var(--sp-accent-dim);
+  border-color: var(--sp-accent-dim);
+  color: #fff;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 72px 0;
+  color: var(--sp-text-muted);
+  font-size: 14px;
+}
+
+.loading__spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--sp-surface-3);
+  border-top-color: var(--sp-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading__spinner { animation-duration: 3s; }
+}
+
+.alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-radius: var(--sp-radius);
+  border: 1px solid var(--sp-border);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.alert--error {
+  border-color: rgba(208, 59, 59, 0.5);
+  background: rgba(208, 59, 59, 0.08);
+  color: var(--sp-critical-text);
+}
+
+.alert--warn {
+  border-color: rgba(250, 178, 25, 0.4);
+  background: rgba(250, 178, 25, 0.07);
+  color: #f5c451;
+}
+
+.empty {
+  padding: 80px 0;
+  text-align: center;
+}
+
+.empty__title {
+  margin: 0 0 10px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--sp-text);
+}
+
+.empty__body {
+  margin: 0 0 24px;
+  color: var(--sp-text-muted);
+}
+</style>
