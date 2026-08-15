@@ -24,10 +24,30 @@
           </div>
         </div>
 
-        <button class="btn btn--ghost" type="button" @click="share">
-          {{ copied ? 'Link copied' : 'Copy link' }}
-        </button>
+        <div class="head__actions">
+          <button class="btn btn--ghost" type="button" @click="toggleEdit">
+            {{ editing ? 'Cancel' : 'Edit packages' }}
+          </button>
+          <button class="btn btn--ghost" type="button" @click="share">
+            {{ copied ? 'Link copied' : 'Copy link' }}
+          </button>
+        </div>
       </header>
+
+      <!-- Editing turns any comparison into a live query. Changes are applied on
+           submit rather than per keystroke: each refetch costs GitHub API budget
+           that is shared across every visitor. -->
+      <form v-if="editing" class="editor" @submit.prevent="applyEdit">
+        <PackagePicker v-model="draft" :ecosystem="spec.ecosystem" />
+        <div class="editor__actions">
+          <button class="btn btn--primary" type="submit" :disabled="draft.length < 2 || unchanged">
+            Update comparison
+          </button>
+          <span v-if="spec.curated && !unchanged" class="editor__warn">
+            This becomes a custom comparison — the notes above won't carry over.
+          </span>
+        </div>
+      </form>
 
       <p v-if="spec.note" class="note">{{ spec.note }}</p>
 
@@ -70,7 +90,8 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { useRoute, RouterLink } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
+import PackagePicker from '../components/PackagePicker.vue'
 import TrendChart from '../components/TrendChart.vue'
 import MetricTable from '../components/MetricTable.vue'
 import VerdictCard from '../components/VerdictCard.vue'
@@ -80,6 +101,10 @@ import { buildVerdict } from '../lib/verdict'
 import type { PackageResult } from '../types'
 
 const route = useRoute()
+const router = useRouter()
+
+const editing = ref(false)
+const draft = ref<string[]>([])
 
 const results = ref<PackageResult[] | null>(null)
 const loading = ref(true)
@@ -139,6 +164,30 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function toggleEdit() {
+  editing.value = !editing.value
+  if (editing.value) draft.value = [...(spec.value?.packages ?? [])]
+}
+
+const unchanged = computed(() => {
+  const current = spec.value?.packages ?? []
+  return (
+    current.length === draft.value.length &&
+    current.every((p, i) => p === draft.value[i])
+  )
+})
+
+/** Every edit lands on the ad-hoc route, so the result is always a shareable
+ *  permalink regardless of whether it started from a curated page. */
+function applyEdit() {
+  if (draft.value.length < 2 || unchanged.value || !spec.value) return
+  editing.value = false
+  router.push({
+    name: 'adhoc',
+    query: { ecosystem: spec.value.ecosystem, packages: draft.value.join(',') },
+  })
 }
 
 async function share() {
@@ -228,6 +277,43 @@ watch(
   letter-spacing: 0.08em;
   font-size: 10px;
   font-weight: 700;
+}
+
+.head__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.editor {
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid var(--sp-border-strong);
+  border-radius: var(--sp-radius-lg);
+  background: var(--sp-surface);
+}
+
+.editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.editor__warn {
+  font-size: 12px;
+  color: var(--sp-text-muted);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn--primary:disabled:hover {
+  background: var(--sp-accent);
+  border-color: var(--sp-accent);
+  color: #12091f;
 }
 
 .note {
