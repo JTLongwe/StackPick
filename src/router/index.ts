@@ -17,6 +17,11 @@ const router = createRouter({
       component: () => import('../views/Comparison.vue')
     },
     {
+      path: '/category/:slug',
+      name: 'category',
+      component: () => import('../views/Category.vue')
+    },
+    {
       // Curated, from src/content/comparisons/*.yaml
       // Lazy so Chart.js only downloads once someone opens a comparison.
       path: '/compare/:id',

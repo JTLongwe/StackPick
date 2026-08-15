@@ -14,6 +14,18 @@
       <ComparisonBuilder class="hero__builder" />
     </section>
 
+    <section class="cats">
+      <h2 class="browse__title">Browse by category</h2>
+      <div class="cats__row">
+        <RouterLink
+          v-for="cat in categories"
+          :key="cat.slug"
+          :to="`/category/${cat.slug}`"
+          class="cat"
+        >{{ cat.label }}</RouterLink>
+      </div>
+    </section>
+
     <section class="browse">
       <div class="browse__bar">
         <h2 class="browse__title">Curated comparisons</h2>
@@ -77,6 +89,7 @@ import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import ComparisonBuilder from '../components/ComparisonBuilder.vue'
 import { comparisons } from '../content'
+import { categories } from '../content/categories'
 import { parsePackages } from '../lib/spec'
 
 const query = ref('')
@@ -145,6 +158,33 @@ const adhocFallback = computed(() => ({
 .hero__builder {
   margin-top: 28px;
   max-width: 720px;
+}
+
+.cats {
+  padding-top: 32px;
+}
+
+.cats__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.cat {
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--sp-border);
+  background: var(--sp-surface);
+  color: var(--sp-text-dim);
+  font-size: 13px;
+  text-decoration: none;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.cat:hover {
+  border-color: var(--sp-accent);
+  color: var(--sp-accent);
 }
 
 .browse {

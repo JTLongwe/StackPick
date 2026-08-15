@@ -10,7 +10,9 @@ import type { Handler } from '@netlify/functions';
  * rather than an optimisation.
  */
 
-const MAX_QUERY = 64;
+// Roomy enough for tag-scoped category queries, which join several terms
+// ("keywords:crypto keywords:encryption keywords:jwt …").
+const MAX_QUERY = 200;
 const DEFAULT_LIMIT = 8;
 const MAX_LIMIT = 25;
 
