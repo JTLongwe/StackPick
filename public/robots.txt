@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Ad-hoc comparisons are generated from query strings. There is an unbounded
+# number of them and none are editorial, so keep crawlers on the curated pages.
+Disallow: /compare?
+
+Sitemap: /sitemap.xml

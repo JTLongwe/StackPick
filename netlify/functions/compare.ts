@@ -30,7 +30,40 @@ const readJson = (res: Response) => res.json() as Promise<any>;
  * This is the cheapest of the mitigations against the search-API ceiling below.
  */
 const githubCache = new Map<string, { at: number; value: any }>();
-const GITHUB_TTL_MS = 15 * 60 * 1000;
+// Stars and issue counts barely move, and a long memo is what keeps a traffic
+// spike from turning into a request storm.
+const GITHUB_TTL_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Circuit breaker for GitHub's two rate-limit pools.
+ *
+ * Without this, a traffic spike means every visitor's request hammers an
+ * endpoint that is already refusing, which burns function time and delays
+ * every page. Once GitHub says no, we stop asking until the window resets and
+ * serve the rest of the metrics meanwhile.
+ *
+ * The two pools are tracked separately because they are wildly different:
+ * /search/issues allows 30 requests per minute, /repos allows 5,000 per hour.
+ */
+const breaker: Record<'search' | 'core', number> = { search: 0, core: 0 };
+
+const breakerOpen = (pool: 'search' | 'core') => Date.now() < breaker[pool];
+
+function noteRateLimit(pool: 'search' | 'core', res: Response) {
+  const remaining = Number(res.headers.get('x-ratelimit-remaining'));
+  const reset = Number(res.headers.get('x-ratelimit-reset'));
+
+  const exhausted = res.status === 403 || res.status === 429 || remaining === 0;
+  if (!exhausted) return;
+
+  // Prefer GitHub's own reset time; fall back to a conservative window.
+  const resetAt = Number.isFinite(reset) && reset > 0
+    ? reset * 1000
+    : Date.now() + (pool === 'search' ? 60_000 : 5 * 60_000);
+
+  breaker[pool] = Math.max(breaker[pool], resetAt);
+  console.warn(`GitHub ${pool} pool exhausted; pausing until ${new Date(breaker[pool]).toISOString()}`);
+}
 
 /**
  * GitHub's /search/issues endpoint allows only 30 requests per MINUTE even when
@@ -70,15 +103,23 @@ async function getGithubMetrics(repoUrl: string) {
     headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
 
+  // Nothing to gain from asking a pool that is already refusing.
+  if (breakerOpen('core')) return null;
+
   try {
     const [repoRes, issuesRes] = await Promise.allSettled([
       fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, { headers }),
-      fetchWithTimeout(
-        `https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${rawOwner}/${rawRepo} type:issue state:closed`)}&per_page=1`,
-        { headers },
-        4000
-      )
+      breakerOpen('search')
+        ? Promise.reject(new Error('search pool cooling down'))
+        : fetchWithTimeout(
+            `https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${rawOwner}/${rawRepo} type:issue state:closed`)}&per_page=1`,
+            { headers },
+            4000
+          )
     ]);
+
+    if (repoRes.status === 'fulfilled') noteRateLimit('core', repoRes.value);
+    if (issuesRes.status === 'fulfilled') noteRateLimit('search', issuesRes.value);
 
     if (repoRes.status !== 'fulfilled' || !repoRes.value.ok) return null;
 

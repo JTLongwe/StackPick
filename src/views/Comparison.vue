@@ -107,6 +107,7 @@ import VerdictCard from '../components/VerdictCard.vue'
 import RequirementsBar from '../components/RequirementsBar.vue'
 import ApiFit from '../components/ApiFit.vue'
 import { loadRequirements, saveRequirements } from '../lib/requirements'
+import { applyMeta, comparisonDescription } from '../lib/meta'
 import { comparisons } from '../content'
 import { specFromComparison, specFromQuery, type ComparisonSpec } from '../lib/spec'
 import { buildVerdict } from '../lib/verdict'
@@ -222,7 +223,19 @@ async function share() {
 // navigating between comparisons does not remount it.
 watch(
   () => [route.params.id, route.query.packages, route.query.ecosystem],
-  load,
+  () => {
+    const s = spec.value
+    applyMeta(
+      s
+        ? {
+            title: s.curated ? s.title : `${s.packages.join(' vs ')}`,
+            description: comparisonDescription(s.packages, s.ecosystem, s.question),
+            path: route.fullPath,
+          }
+        : { title: 'Comparison not found' }
+    )
+    load()
+  },
   { immediate: true }
 )
 </script>

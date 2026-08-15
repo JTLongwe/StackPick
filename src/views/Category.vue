@@ -82,6 +82,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { categoryBySlug, categoryQuery, categorySeeds } from '../content/categories'
 import { MAX_PACKAGES } from '../lib/spec'
 import { formatCompact } from '../lib/format'
+import { applyMeta } from '../lib/meta'
 import type { Ecosystem, PackageSummary } from '../types'
 
 const route = useRoute()
@@ -154,7 +155,23 @@ async function load() {
   }
 }
 
-watch([() => route.params.slug, ecosystem], load, { immediate: true })
+watch(
+  [() => route.params.slug, ecosystem],
+  () => {
+    const cat = category.value
+    applyMeta(
+      cat
+        ? {
+            title: `${cat.label} libraries compared`,
+            description: `${cat.blurb} Compare the contenders on live registry data: momentum, release cadence, security advisories and supply-chain size.`,
+            path: `/category/${cat.slug}`,
+          }
+        : { title: 'Category not found' }
+    )
+    load()
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

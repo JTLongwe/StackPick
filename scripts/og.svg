@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <defs>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(60 40) scale(720 560)">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.13"/>
+      <stop offset="0.55" stop-color="#a78bfa" stop-opacity="0.03"/>
+      <stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#0a0c10"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+
+  <!-- wordmark -->
+  <rect x="80" y="72" width="26" height="26" rx="6" fill="#1b2029" stroke="#37404f"/>
+  <rect x="80" y="87" width="26" height="11" rx="3" fill="#a78bfa"/>
+  <text x="122" y="93" fill="#e6eaf0" font-size="27" font-weight="700" letter-spacing="-0.5">StackPick</text>
+
+  <!-- headline -->
+  <text x="80" y="230" fill="#e6eaf0" font-size="76" font-weight="700" letter-spacing="-2.5">Stop guessing which</text>
+  <text x="80" y="316" fill="#a78bfa" font-size="76" font-weight="700" letter-spacing="-2.5">library to pick.</text>
+
+  <text x="80" y="382" fill="#96a0b0" font-size="27">Live npm and NuGet data. Momentum, security and</text>
+  <text x="80" y="420" fill="#96a0b0" font-size="27">maintenance, with a verdict that shows its working.</text>
+
+  <!-- illustrative comparison row -->
+  <g transform="translate(80 478)">
+    <rect width="1040" height="80" rx="14" fill="#14181f" stroke="#262c36"/>
+
+    <text x="28" y="34" fill="#6b7585" font-size="14" font-weight="700" letter-spacing="1.6">MOMENTUM</text>
+    <text x="28" y="62" fill="#e6eaf0" font-size="22" font-family="Consolas, monospace">pinia</text>
+    <text x="118" y="62" fill="#4ade80" font-size="22" font-weight="700">▲ +87%</text>
+
+    <line x1="268" y1="18" x2="268" y2="62" stroke="#262c36"/>
+
+    <text x="300" y="34" fill="#6b7585" font-size="14" font-weight="700" letter-spacing="1.6">LAST RELEASE</text>
+    <text x="300" y="62" fill="#e6eaf0" font-size="22" font-family="Consolas, monospace">vuex</text>
+    <text x="386" y="62" fill="#f87171" font-size="22" font-weight="700">3 years ago</text>
+
+    <line x1="588" y1="18" x2="588" y2="62" stroke="#262c36"/>
+
+    <text x="620" y="34" fill="#6b7585" font-size="14" font-weight="700" letter-spacing="1.6">SUPPLY CHAIN</text>
+    <text x="620" y="62" fill="#e6eaf0" font-size="22" font-family="Consolas, monospace">ky</text>
+    <text x="676" y="62" fill="#4ade80" font-size="22" font-weight="700">0 packages</text>
+  </g>
+</svg>

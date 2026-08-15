@@ -91,6 +91,9 @@ import ComparisonBuilder from '../components/ComparisonBuilder.vue'
 import { comparisons } from '../content'
 import { categories } from '../content/categories'
 import { parsePackages } from '../lib/spec'
+import { applyMeta } from '../lib/meta'
+
+applyMeta({ path: '/' })
 
 const query = ref('')
 const activeEcosystem = ref<string>('all')
