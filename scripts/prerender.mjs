@@ -81,9 +81,13 @@ function render({ path, title, description, body }) {
     `<div id="app">${body}</div>`
   )
 
-  const dir = join(dist, path.replace(/^\//, ''))
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'index.html'), html)
+  // Written as <route>.html rather than <route>/index.html. Netlify serves the
+  // former at the exact extensionless URL, while the latter makes it 301 to a
+  // trailing slash, which would leave every canonical tag pointing at a URL
+  // that redirects.
+  const file = join(dist, path.replace(/^\//, '') + '.html')
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, html)
   return url
 }
 
