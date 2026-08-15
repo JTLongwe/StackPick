@@ -1,0 +1,10 @@
+id: dotnet-json
+title: .NET JSON serialization
+question: Which JSON library should I use in a .NET application?
+ecosystem: nuget
+packages:
+  - Newtonsoft.Json
+  - System.Text.Json
+note: |
+  Newtonsoft.Json was the standard for years. System.Text.Json is Microsoft's
+  modern, high-performance built-in alternative.

@@ -1,0 +1,11 @@
+id: schema-validation
+title: Schema validation
+question: How should I validate objects and form inputs?
+ecosystem: npm
+packages:
+  - zod
+  - yup
+  - joi
+note: |
+  Zod has become the default choice for TypeScript-first validation.
+  Yup and Joi are older but still widely used.

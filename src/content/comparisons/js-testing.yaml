@@ -1,0 +1,10 @@
+id: js-testing
+title: JavaScript testing
+question: Which testing framework should I use for a modern JS/TS codebase?
+ecosystem: npm
+packages:
+  - vitest
+  - jest
+note: |
+  Jest is the heavyweight champion. Vitest is the modern challenger, especially
+  appealing if you are already using Vite.

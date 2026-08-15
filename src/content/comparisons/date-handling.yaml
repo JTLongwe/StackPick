@@ -1,0 +1,12 @@
+id: date-handling
+title: Date handling
+question: Which library is best for parsing, formatting and manipulating dates in JavaScript?
+ecosystem: npm
+packages:
+  - date-fns
+  - dayjs
+  - luxon
+  - moment
+note: |
+  Moment is in maintenance mode, but its legacy means its downloads remain massive.
+  Look at the trend lines, not the totals, to see where the community is moving.

@@ -1,0 +1,10 @@
+id: dotnet-logging
+title: .NET logging
+question: How should I handle structured logging in .NET?
+ecosystem: nuget
+packages:
+  - Serilog
+  - NLog
+note: |
+  Serilog pioneered structured logging in .NET and remains highly popular.
+  NLog is an older framework that added structured logging later.

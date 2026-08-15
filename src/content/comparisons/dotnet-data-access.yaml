@@ -1,0 +1,10 @@
+id: dotnet-data-access
+title: .NET data access
+question: How should I interact with databases in C#?
+ecosystem: nuget
+packages:
+  - Dapper
+  - Microsoft.EntityFrameworkCore
+note: |
+  Entity Framework Core is the official full-featured ORM. Dapper is a popular
+  micro-ORM focusing on raw SQL performance.

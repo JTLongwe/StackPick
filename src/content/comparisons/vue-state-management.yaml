@@ -1,0 +1,10 @@
+id: vue-state-management
+title: Vue state management
+question: Where should shared state live in a Vue application?
+ecosystem: npm
+packages:
+  - pinia
+  - vuex
+note: |
+  Vuex was the official answer through Vue 2. Pinia replaced it as the recommended
+  option for Vue 3. Watch the trend lines rather than the totals.

@@ -1,0 +1,10 @@
+id: http-client
+title: HTTP client
+question: How should I make HTTP requests in browser and node applications?
+ecosystem: npm
+packages:
+  - axios
+  - ky
+note: |
+  Axios has been the standard for years. Ky is a smaller, modern alternative
+  built around the native fetch API.

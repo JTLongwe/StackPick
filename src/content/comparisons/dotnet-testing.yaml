@@ -1,0 +1,11 @@
+id: dotnet-testing
+title: .NET testing framework
+question: Which unit testing framework should I choose for C#?
+ecosystem: nuget
+packages:
+  - xunit
+  - NUnit
+  - MSTest.TestFramework
+note: |
+  All three are capable. xUnit is often preferred in modern codebases, including
+  many of Microsoft's open-source projects.

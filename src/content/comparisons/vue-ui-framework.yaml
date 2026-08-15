@@ -1,0 +1,11 @@
+id: vue-ui-framework
+title: Vue UI framework
+question: Which component library should I use for a new Vue application?
+ecosystem: npm
+packages:
+  - vuetify
+  - primevue
+  - quasar
+note: |
+  Vuetify is the classic Material Design choice. PrimeVue and Quasar offer broader
+  sets of components and different design languages.
