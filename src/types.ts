@@ -13,9 +13,25 @@ export interface Comparison {
 export interface GithubMetrics {
   stars: number
   openIssues: number
-  closedIssues: number
+  /**
+   * null when GitHub's search API was unavailable or rate-limited — which is
+   * common, since it allows only 30 requests per minute site-wide. Must never
+   * be treated as 0; that would read as "nothing ever gets closed".
+   */
+  closedIssues: number | null
   archived: boolean
   license: string | null
+  topics?: string[]
+}
+
+/** A package summary from the typeahead search endpoint. */
+export interface PackageSummary {
+  name: string
+  description: string
+  version: string
+  downloads?: number
+  tags: string[]
+  verified?: boolean
 }
 
 /** One package's row in the comparison table, as returned by /api/compare. */
@@ -38,6 +54,8 @@ export interface PackageResult {
   /** The registry's own deprecation notice, when the author set one. */
   deprecated?: string | null
   license?: string | null
+  /** npm keywords or NuGet tags, used for category grouping. */
+  tags?: string[]
   github?: GithubMetrics | null
   bundleSize?: { size: number; gzip: number } | null
   /** Set instead of the metrics above when the lookup failed. */

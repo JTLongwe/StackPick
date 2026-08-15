@@ -27,3 +27,8 @@ dist-ssr
 .netlify
 deno.lock
 .claude/
+
+# Local env (never commit tokens)
+.env
+.env.*
+!.env.example

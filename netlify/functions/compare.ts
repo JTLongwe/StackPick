@@ -24,6 +24,24 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutM
  */
 const readJson = (res: Response) => res.json() as Promise<any>;
 
+/**
+ * Warm-container memo. Netlify reuses function instances between invocations,
+ * so popular packages are frequently answered without touching GitHub at all.
+ * This is the cheapest of the mitigations against the search-API ceiling below.
+ */
+const githubCache = new Map<string, { at: number; value: any }>();
+const GITHUB_TTL_MS = 15 * 60 * 1000;
+
+/**
+ * GitHub's /search/issues endpoint allows only 30 requests per MINUTE even when
+ * authenticated, and that budget is shared across every visitor to the site.
+ * The repo endpoint is 5,000/hour by comparison. Closed-issue counts are
+ * therefore treated as strictly optional: when the budget is gone the rest of
+ * the metrics still return, and the count comes back null.
+ *
+ * null is not zero. Reporting a rate-limited lookup as "0 closed issues" would
+ * drive the close ratio to 0% and actively penalise the package in the verdict.
+ */
 async function getGithubMetrics(repoUrl: string) {
   if (!repoUrl) return null;
 
@@ -31,8 +49,15 @@ async function getGithubMetrics(repoUrl: string) {
   const match = repoUrl.match(/github\.com\/([^/]+)\/([^/#?]+)/i);
   if (!match) return null;
 
-  const owner = encodeURIComponent(match[1]);
-  const repo = encodeURIComponent(match[2].replace(/\.git$/, ''));
+  const rawOwner = match[1];
+  const rawRepo = match[2].replace(/\.git$/, '');
+  const key = `${rawOwner}/${rawRepo}`.toLowerCase();
+
+  const hit = githubCache.get(key);
+  if (hit && Date.now() - hit.at < GITHUB_TTL_MS) return hit.value;
+
+  const owner = encodeURIComponent(rawOwner);
+  const repo = encodeURIComponent(rawRepo);
 
   const headers: Record<string, string> = {
     'Accept': 'application/vnd.github.v3+json',
@@ -46,31 +71,43 @@ async function getGithubMetrics(repoUrl: string) {
   }
 
   try {
-    const [repoRes, issuesRes] = await Promise.all([
+    const [repoRes, issuesRes] = await Promise.allSettled([
       fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, { headers }),
-      fetchWithTimeout(`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${match[1]}/${match[2].replace(/\.git$/, '')} type:issue state:closed`)}`, { headers })
+      fetchWithTimeout(
+        `https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${rawOwner}/${rawRepo} type:issue state:closed`)}&per_page=1`,
+        { headers },
+        4000
+      )
     ]);
 
-    if (!repoRes.ok) return null;
+    if (repoRes.status !== 'fulfilled' || !repoRes.value.ok) return null;
 
-    const repoData = await readJson(repoRes);
-    let closedIssuesCount = 0;
-    if (issuesRes.ok) {
-      const issuesData = await readJson(issuesRes);
-      closedIssuesCount = issuesData.total_count || 0;
+    const repoData = await readJson(repoRes.value);
+
+    let closedIssues: number | null = null;
+    if (issuesRes.status === 'fulfilled' && issuesRes.value.ok) {
+      closedIssues = (await readJson(issuesRes.value)).total_count ?? null;
+    } else if (issuesRes.status === 'fulfilled') {
+      console.warn(`GitHub issue search unavailable for ${key} (HTTP ${issuesRes.value.status})`);
     }
 
-    return {
+    const value = {
       stars: repoData.stargazers_count,
       // GitHub's open_issues_count includes open PRs; subtract nothing here, but
       // it is the same convention shown on the repo page.
       openIssues: repoData.open_issues_count,
-      closedIssues: closedIssuesCount,
+      closedIssues,
       archived: repoData.archived,
       license: repoData.license?.spdx_id || null,
+      // Curated repo topics — the cleanest of the three tag sources, and already
+      // present in this response.
+      topics: Array.isArray(repoData.topics) ? repoData.topics : [],
     };
+
+    githubCache.set(key, { at: Date.now(), value });
+    return value;
   } catch (e) {
-    console.error(`GitHub API error for ${owner}/${repo}:`, e);
+    console.error(`GitHub API error for ${key}:`, e);
     return null;
   }
 }
@@ -196,6 +233,7 @@ async function fetchNpmData(pkgName: string) {
         ? latestVersionData.deprecated
         : latestVersionData?.deprecated ? 'This package is deprecated.' : null,
       license: meta.license || null,
+      tags: Array.isArray(latestVersionData?.keywords) ? latestVersionData.keywords : [],
       github: githubMetrics,
       bundleSize
     };
@@ -281,6 +319,7 @@ async function fetchNugetData(pkgName: string) {
       typesBundled: null, // Not applicable
       deprecated: null,
       license: pkgData.licenseUrl ? 'See License URL' : null, // Simplification
+      tags: Array.isArray(pkgData.tags) ? pkgData.tags : [],
       github: githubMetrics,
       bundleSize: null // Not applicable
     };
@@ -334,6 +373,8 @@ export const handler: Handler = async (event) => {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
+        // A long CDN life is the main defence against the GitHub search ceiling:
+        // repeat views of the same comparison never reach the function.
         'Cache-Control': 'public, max-age=600',
         'Netlify-CDN-Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=604800',
         'Access-Control-Allow-Origin': '*'
