@@ -33,7 +33,7 @@ export function monthsSince(iso: string | null | undefined): number | null {
   return (Date.now() - t) / (1000 * 60 * 60 * 24 * 30.44)
 }
 
-/** "3 months ago" / "2 years ago" — vaguer as it gets older, which is honest. */
+/** "3 months ago" / "2 years ago". Vaguer as it gets older, which is honest. */
 export function formatAge(iso: string | null | undefined): string {
   const months = monthsSince(iso)
   if (months == null) return 'N/A'

@@ -113,7 +113,7 @@ const placeholder = computed(() =>
 const hint = computed(() => {
   if (atLimit.value) return `Maximum of ${MAX_PACKAGES} packages.`
   if (props.modelValue.length < 2) return 'Pick at least two packages to compare.'
-  return `${props.modelValue.length} selected — add up to ${MAX_PACKAGES}.`
+  return `${props.modelValue.length} selected. You can add up to ${MAX_PACKAGES}.`
 })
 
 /** Offer the literal input when it's a valid name that search didn't return. */
@@ -141,8 +141,8 @@ function move(delta: number) {
 }
 
 /**
- * Enter must always do something useful. If nothing is highlighted yet — the
- * results may have landed a tick ago — fall back to the first result, and to
+ * Enter must always do something useful. If nothing is highlighted yet. The
+ * results may have landed a tick ago. Fall back to the first result, and to
  * the raw text when there are no results at all.
  */
 function choose(index?: number) {

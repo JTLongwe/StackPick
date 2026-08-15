@@ -105,7 +105,7 @@ const rows = computed<Row[]>(() => {
     {
       label: 'Momentum (YoY)',
       key: 'growth',
-      hint: 'Change in download volume against the same period last year. The signal raw totals hide.',
+      hint: 'Change in downloads against the same period last year. Raw totals hide this.',
       value: r => formatPercent(r.growthYoY),
     },
     {
@@ -114,7 +114,7 @@ const rows = computed<Row[]>(() => {
     },
     {
       label: 'Releases (last year)',
-      hint: 'How often the package actually ships. Separates alive from embalmed.',
+      hint: 'How often the package actually ships a release.',
       value: r => (r.releasesLastYear == null ? 'N/A' : String(r.releasesLastYear)),
     },
     { label: 'Last publish', value: r => formatAge(r.lastPublish) },
@@ -132,7 +132,7 @@ const rows = computed<Row[]>(() => {
     { label: 'GitHub stars', value: r => formatCompact(r.github?.stars) },
     {
       label: 'Issues closed',
-      hint: 'Share of all issues that are closed — a rough proxy for maintainer responsiveness.',
+      hint: 'Share of all issues that are closed. A rough sign of how responsive maintainers are.',
       value: r => {
         const open = r.github?.openIssues
         const closed = r.github?.closedIssues
@@ -254,7 +254,7 @@ const rows = computed<Row[]>(() => {
   gap: 6px;
 }
 
-/* Status is never carried by color alone — every flag ships a dot AND a label,
+/* Status is never carried by color alone. Every flag ships a dot AND a label,
    and the full explanation is in the title attribute. */
 .flag {
   display: inline-flex;

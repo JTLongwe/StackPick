@@ -4,7 +4,7 @@ import type { Ecosystem, PackageSummary } from '../types'
 const MIN_QUERY = 2
 const DEBOUNCE_MS = 250
 
-// Shared across component instances — backspacing through a query should be
+// Shared across component instances. Backspacing through a query should be
 // instant, and two pickers on one page shouldn't each pay for the same prefix.
 const cache = new Map<string, PackageSummary[]>()
 

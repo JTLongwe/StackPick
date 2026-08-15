@@ -8,8 +8,8 @@
       <p class="hero__body">
         The answer is buried across npm, GitHub, changelogs and blog posts.
         StackPick puts it on one screen and reads the trend lines, not just the
-        totals — because a package can hold a huge download count for years while
-        every signal points down.
+        totals. A package can hold a huge download count for years after everyone
+        has moved on.
       </p>
       <ComparisonBuilder class="hero__builder" />
     </section>
@@ -106,7 +106,7 @@ const filtered = computed(() => {
   return comparisons.filter(c => {
     if (activeEcosystem.value !== 'all' && c.ecosystem !== activeEcosystem.value) return false
     if (!q) return true
-    // Match packages too — people search for the library, not the topic.
+    // Match packages too. People search for the library, not the topic.
     return (
       c.title.toLowerCase().includes(q) ||
       c.question.toLowerCase().includes(q) ||
@@ -115,8 +115,8 @@ const filtered = computed(() => {
   })
 })
 
-/** A failed search is still a lead: offer to run it as an ad-hoc comparison —
- *  but only when it would actually be valid, rather than routing to an error. */
+/** A failed search is still a lead, so offer to run it as an ad-hoc comparison.
+ *  Only when it would actually be valid though, rather than routing to an error. */
 const canCompareQuery = computed(() => parsePackages(query.value).length >= 2)
 
 const adhocFallback = computed(() => ({

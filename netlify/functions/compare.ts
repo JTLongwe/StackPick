@@ -65,7 +65,7 @@ async function getGithubMetrics(repoUrl: string) {
   };
 
   // Without a token GitHub allows 60 req/hr per IP, and Netlify's egress IPs are
-  // shared — set GITHUB_TOKEN in the site env or these columns will read N/A.
+  // shared. Set GITHUB_TOKEN in the site env or these columns will read N/A.
   if (process.env.GITHUB_TOKEN) {
     headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
@@ -99,7 +99,7 @@ async function getGithubMetrics(repoUrl: string) {
       closedIssues,
       archived: repoData.archived,
       license: repoData.license?.spdx_id || null,
-      // Curated repo topics — the cleanest of the three tag sources, and already
+      // Curated repo topics. The cleanest of the three tag sources, and already
       // present in this response.
       topics: Array.isArray(repoData.topics) ? repoData.topics : [],
     };
@@ -173,7 +173,7 @@ function computeGrowth(weekly: number[]): number | null {
 
 const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
 
-/** How many versions shipped in the last year — alive vs. embalmed. */
+/** How many versions shipped in the last year. */
 function countRecentReleases(dates: (string | undefined)[]): number {
   const cutoff = Date.now() - MS_PER_YEAR;
   return dates.filter(d => {
@@ -201,7 +201,7 @@ async function fetchNpmData(pkgName: string) {
     const latestVersionData = meta.versions?.[latestVersion];
     const repoUrl = meta.repository?.url || '';
 
-    // Independent lookups — run them together rather than back to back.
+    // Independent lookups. Run them together rather than back to back.
     const [githubMetrics, bundleSize] = await Promise.all([
       getGithubMetrics(repoUrl),
       latestVersion ? getBundlephobia(pkgName, latestVersion) : Promise.resolve(null)
@@ -311,7 +311,7 @@ async function fetchNugetData(pkgName: string) {
       trend: versions.map((v: any) => v.downloads),
       trendDates: versions.map((v: any) => v.version),
       // NuGet publishes no download time series, so momentum is genuinely
-      // unavailable here rather than zero — the UI must say so, not imply decline.
+      // unavailable here rather than zero. The UI must say so, not imply decline.
       growthYoY: null,
       releasesLastYear: releaseDates.length ? countRecentReleases(releaseDates) : null,
       lastPublish: sortedDates.length ? sortedDates[sortedDates.length - 1] : null,

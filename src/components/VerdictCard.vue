@@ -34,10 +34,10 @@
     <details class="verdict__how">
       <summary>How this is scored</summary>
       <p>
-        A weighted blend of momentum (35%), adoption (25%), maintenance (25%) and
-        community (15%). Deprecated, archived or dormant packages are penalised
-        directly. Signals a registry doesn't publish are dropped and their weight
-        is redistributed, never scored as zero.
+        Momentum counts for 35%, adoption 25%, maintenance 25% and community 15%.
+        Packages that are deprecated, archived or have gone quiet take a direct
+        hit. If a registry doesn't publish something, that signal is dropped and
+        its weight goes to the others rather than counting as zero.
       </p>
       <ul>
         <li v-for="(caveat, i) in verdict.caveats" :key="i">{{ caveat }}</li>
@@ -159,7 +159,7 @@ defineProps<{ verdict: Verdict }>()
   background: var(--sp-accent);
 }
 
-/* Only the leader is saturated — the rest recede so rank is legible at a glance
+/* Only the leader is saturated. The rest recede so rank is legible at a glance
    without needing to read the numbers. */
 .score:not(:first-child) .score__fill {
   background: var(--sp-border-strong);

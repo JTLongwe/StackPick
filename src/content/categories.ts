@@ -4,15 +4,15 @@ import type { Ecosystem } from '../types'
  * Curated category taxonomy.
  *
  * Hand-maintained rather than derived from registry keywords. Real packages tag
- * themselves `javascript`, `typescript`, `node`, `utility` — terms that carry no
- * signal — so auto-derived categories look broken.
+ * themselves `javascript`, `typescript`, `node`, `utility`. Terms that carry no
+ * signal. So auto-derived categories look broken.
  *
  * Registry search alone is not good enough to lead a category page. Measured on
  * the live APIs: npm's `keywords:` qualifier returns near-nothing for
  * cryptography and only @ngxs/* plugins for state management, while plain-text
  * search puts @elastic/eui above React and MUI for UI libraries. NuGet's tag
- * search is genuinely good. So each category carries `seeds` — the contenders
- * worth naming — and search supplies discovery below them.
+ * search is genuinely good. So each category carries `seeds`. The contenders
+ * worth naming. And search supplies discovery below them.
  *
  * Even then, treat the ORDER as meaningless: registry ranking favours
  * incumbents, which is exactly the bias StackPick exists to look past. A
@@ -23,7 +23,7 @@ export interface Category {
   label: string
   blurb: string
   ecosystems: Ecosystem[]
-  /** Plain-text npm query — npm ranks text search better than its own
+  /** Plain-text npm query. Npm ranks text search better than its own
    *  keywords: qualifier, which buries the real libraries. */
   npmSearch?: string
   /** NuGet's tag search works well; repeated qualifiers act as OR. */

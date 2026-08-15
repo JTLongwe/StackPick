@@ -8,7 +8,7 @@
         <p class="chart__sub">
           {{ ecosystem === 'npm'
             ? 'Last 52 weeks. Watch the slope, not the height.'
-            : 'NuGet publishes no download time series, so this is per-version totals.' }}
+            : 'NuGet does not publish downloads over time, so this shows per-version totals.' }}
         </p>
       </div>
       <label v-if="needsLogToggle" class="chart__toggle">
@@ -61,8 +61,8 @@ const props = defineProps<{
 
 const useLogScale = ref(false)
 
-// Only offer the toggle when the series really are orders of magnitude apart —
-// a log axis on comparable series just makes the difference harder to read.
+// Only offer the toggle when the series really are orders of magnitude apart.
+// On comparable series a log axis just makes the difference harder to read.
 const needsLogToggle = computed(() => {
   let max = 0
   let min = Infinity
@@ -89,7 +89,7 @@ const chartData = computed(() => {
     datasets: props.results.map((res, index) => ({
       label: res.name,
       data: res.trend || [],
-      // Fixed slot order, never cycled — the palette's CVD safety depends on it.
+      // Fixed slot order, never cycled. The palette's CVD safety depends on it.
       borderColor: SERIES_PALETTE[index % SERIES_PALETTE.length],
       backgroundColor: SERIES_PALETTE[index % SERIES_PALETTE.length],
       borderWidth: 2,

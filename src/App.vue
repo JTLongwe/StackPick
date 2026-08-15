@@ -67,7 +67,7 @@ import { RouterLink, RouterView } from 'vue-router'
   text-decoration: none;
 }
 
-/* A small stacked mark — three bars, tallest last, echoing the trend lines. */
+/* A small stacked mark. Three bars, tallest last, echoing the trend lines. */
 .brand__mark {
   width: 15px;
   height: 15px;

@@ -2,13 +2,13 @@
  * StackPick design tokens.
  *
  * Vuetify owns component internals and layout; this file owns the palette and
- * the few global rules. The app is deliberately dark-only — it is a dense data
+ * the few global rules. The app is deliberately dark-only. It is a dense data
  * tool, and a single committed surface lets the chart palette be validated
  * against one known background instead of two.
  */
 
 :root {
-  /* Surfaces — near-black, cool-shifted so the accent reads warm against it */
+  /* Surfaces. Near-black, cool-shifted so the accent reads warm against it */
   --sp-bg: #0a0c10;
   --sp-surface: #14181f;
   --sp-surface-2: #1b2029;
@@ -21,13 +21,13 @@
   --sp-text-dim: #96a0b0;
   --sp-text-muted: #6b7585;
 
-  /* Accent — violet, chosen to sit away from every chart series hue so an
+  /* Accent. Violet, chosen to sit away from every chart series hue so an
      interactive element is never mistaken for data */
   --sp-accent: #a78bfa;
   --sp-accent-dim: #7c5cf0;
   --sp-accent-wash: rgba(167, 139, 250, 0.12);
 
-  /* Status — reserved, never reused as a series color */
+  /* Status. Reserved, never reused as a series color */
   --sp-good: #0ca30c;
   --sp-good-text: #4ade80;
   --sp-warning: #fab219;
@@ -61,7 +61,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Package names, versions and metrics are identifiers — monospace makes them
+/* Package names, versions and metrics are identifiers. Monospace makes them
    scannable in a column and stops them reading as prose. */
 .sp-mono {
   font-family: var(--sp-mono);

@@ -26,9 +26,9 @@
 
     <p class="caveat">
       Contenders first, then whatever the {{ ecosystem }} registry returns for
-      this category. Registry ranking favours incumbents — the thing StackPick
-      exists to look past — so treat the order as meaningless. Pick two or more
-      and let the verdict do the work.
+      this category. The order here doesn't mean much, since registries rank by
+      popularity and that favours whoever got there first. Pick two or more and
+      let the verdict sort it out.
     </p>
 
     <div v-if="loading && !packages.length" class="loading">
@@ -66,7 +66,7 @@
 
       <div class="bar" :class="{ 'is-ready': selected.length >= 2 }">
         <span class="bar__count">
-          {{ selected.length }} selected{{ selected.length < 2 ? ' — pick at least two' : '' }}
+          {{ selected.length }} selected{{ selected.length < 2 ? ', pick at least two' : '' }}
         </span>
         <button class="btn btn--primary" type="button" :disabled="selected.length < 2" @click="compare">
           Compare selected

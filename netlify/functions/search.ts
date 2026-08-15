@@ -99,7 +99,7 @@ export const handler: Handler = async (event) => {
 
   const query = (q ?? '').trim();
   if (query.length < 2) {
-    // Not an error — the client asks on every keystroke. An empty list is the
+    // Not an error. The client asks on every keystroke. An empty list is the
     // honest answer and stays cacheable.
     return json(200, []);
   }

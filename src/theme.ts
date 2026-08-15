@@ -5,7 +5,7 @@
  * app's actual chart surface (#14181f): every slot clears the dark lightness
  * band, the chroma floor, adjacent-pair CVD separation, the normal-vision
  * floor, and 3:1 contrast. The ORDER is the colorblind-safety mechanism, not
- * decoration — assign slots in sequence and never cycle or reorder them.
+ * decoration. Assign slots in sequence and never cycle or reorder them.
  *
  * The chart also carries direct end-labels, so identity never rests on hue alone.
  *

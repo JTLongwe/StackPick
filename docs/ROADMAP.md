@@ -1,4 +1,4 @@
-# StackPick — live search, on-the-fly comparisons, categories
+# StackPick: live search, on-the-fly comparisons, categories
 
 Design doc for the next phase. Written so the work can be picked up cold, in a
 new session, without re-deriving anything.
@@ -8,14 +8,14 @@ new session, without re-deriving anything.
 > **Update:** sections 1–3 are now built and verified against the live APIs.
 > Section 0 (the token) is done in Netlify. The measured finding that changed
 > the design: npm's `keywords:` qualifier is AND, not OR, and even with the
-> right syntax its category results are unusable — so categories ship with
+> right syntax its category results are unusable. So categories ship with
 > seeded contenders. See the Risks section, which still stands.
 
 ---
 
 ## 0. GITHUB_TOKEN ✅
 
-Not code — do this in the Netlify UI. Everything below degrades without it.
+Not code. Do this in the Netlify UI. Everything below degrades without it.
 
 ### Create the token
 
@@ -23,7 +23,7 @@ GitHub → **Settings** → **Developer settings** → **Personal access tokens*
 **Fine-grained tokens** → *Generate new token*.
 
 - Repository access: **Public repositories (read-only)**
-- Permissions: **none — leave every scope unset**
+- Permissions: **none**, leave every scope unset
 
 A zero-scope token still raises the rate limit from **60 requests/hour** to
 **5,000/hour**, because the limit is per-authenticated-user rather than per-IP.
@@ -44,12 +44,12 @@ Netlify → your site → **Site configuration** → **Environment variables** �
 deploy will not pick up a new variable.
 
 `compare.ts` already reads `process.env.GITHUB_TOKEN` and adds the auth header
-when present — no code change needed.
+when present. No code change needed.
 
 ### Local development
 
 ```
-# .env  (gitignored — never commit this)
+# .env  (gitignored, never commit this)
 GITHUB_TOKEN=github_pat_...
 ```
 
@@ -68,7 +68,7 @@ params). The next phase makes that distinction disappear:
 
 Everything renders through one `ComparisonSpec`. YAML becomes **seed content and
 editorial voice**, not a separate code path. `src/lib/spec.ts` already models
-this — the work is making the UI editable rather than adding a second model.
+this. The work is making the UI editable rather than adding a second model.
 
 ---
 
@@ -110,7 +110,7 @@ interface PackageSummary {
 }
 ```
 
-**Response headers** — cache hard, these results barely move:
+**Response headers**, cached hard since these results barely move:
 ```
 Cache-Control: public, max-age=300
 Netlify-CDN-Cache-Control: public, s-maxage=3600, stale-while-revalidate=86400
@@ -125,7 +125,7 @@ A typeahead multi-select. Replaces the free-text input in `ComparisonBuilder.vue
 
 Requirements:
 - Debounce **250ms**; do not fire under **2 characters**.
-- `AbortController` on every keystroke — cancel the in-flight request.
+- `AbortController` on every keystroke, cancelling the in-flight request.
 - Client-side `Map` cache keyed `${ecosystem}:${q}` so backspacing is instant.
 - Selected packages render as removable chips; cap at `MAX_PACKAGES` (8).
 - Keyboard: ↑/↓ to move, Enter to select, Escape to close, Backspace on empty
@@ -138,7 +138,7 @@ Requirements:
 |---|---|
 | `netlify/functions/search.ts` | new |
 | `src/components/PackagePicker.vue` | new |
-| `src/lib/useSearch.ts` | new — debounce + abort + cache |
+| `src/lib/useSearch.ts` | new: debounce + abort + cache |
 | `src/types.ts` | add `PackageSummary` |
 | `src/components/ComparisonBuilder.vue` | swap input for picker |
 
@@ -152,7 +152,7 @@ query rather than a destination.
 - Curated page shows its packages in the picker, pre-filled.
 - Changing the selection rewrites the URL to `/compare?ecosystem=…&packages=…`
   and refetches. The curated title/note drop away once it is no longer that
-  comparison — do not keep editorial copy attached to a set it no longer describes.
+  comparison. Do not keep editorial copy attached to a set it no longer describes.
 - `router.replace` (not `push`) while editing, so the back button doesn't
   accumulate one entry per keystroke.
 - The permalink stays shareable throughout.
@@ -172,7 +172,7 @@ a matter of rendering the picker and pushing selection changes into the query.
 | NuGet | `tags` in the search response | already fetched |
 | GitHub | `topics` on the repo response | already fetched, currently discarded |
 
-All three are **already in responses the function reads today** — surfacing them
+All three are **already in responses the function reads today**. Surfacing them
 costs no extra requests.
 
 ### Browsing by category
@@ -185,13 +185,13 @@ npm:   /-/v1/search?text=keywords:validation&size=20
 NuGet: /query?q=tags:logging&take=20
 ```
 
-### The taxonomy problem — read this before building it
+### The taxonomy problem, read this before building it
 
 Raw keywords are **noise**. Real npm packages tag themselves `javascript`,
 `typescript`, `node`, `utility`. Those carry no signal. Auto-derived categories
 will look broken.
 
-So: `src/content/categories.ts` holds a **curated** map — category → the tags
+So: `src/content/categories.ts` holds a **curated** map from category to the tags
 that genuinely imply it, per ecosystem:
 
 ```ts
@@ -209,7 +209,7 @@ cryptography.
 
 Treat categories as a **discovery surface**, not a ranking. Tag search is
 ordered by registry popularity score, which is exactly the incumbent bias
-StackPick exists to counter — so a category page should lead into a comparison,
+StackPick exists to counter. So a category page should lead into a comparison,
 where the verdict does the real work, rather than presenting its own order as
 meaningful.
 
@@ -218,7 +218,7 @@ meaningful.
 
 ---
 
-## Risks — the things that will actually bite
+## Risks: the things that will actually bite
 
 ### GitHub's search API is the hard ceiling ⚠️
 
@@ -233,7 +233,7 @@ Search is the binding constraint, and it is shared across every visitor:
 Ad-hoc comparison makes this reachable in a way curated pages never did. Options,
 roughly in order of preference:
 
-1. Cache closed-issue counts hard (CDN `s-maxage` of a day) — the number barely
+1. Cache closed-issue counts hard (CDN `s-maxage` of a day). The number barely
    moves and this is nearly free.
 2. Drop the closed-issue count and score maintenance on cadence + recency, which
    are already the stronger signals.
@@ -243,7 +243,7 @@ Do **not** ship broad ad-hoc comparison without addressing this.
 
 ### Function invocation budget
 Typeahead multiplies invocations. Netlify's free tier is 125k/month. Debounce,
-the 2-character floor, and CDN caching are what keep this affordable — treat them
+the 2-character floor, and CDN caching are what keep this affordable. Treat them
 as requirements, not polish.
 
 ### Latency
@@ -260,7 +260,7 @@ that depends on it succeeding.
 
 ## Suggested order
 
-1. `GITHUB_TOKEN` — unblocks the metrics everything else leans on
+1. `GITHUB_TOKEN`. Unblocks the metrics everything else leans on
 2. Cache/mitigate the GitHub search ceiling **before** widening ad-hoc use
 3. `search.ts` + `PackagePicker` in the home builder
 4. Picker on the comparison page

@@ -14,7 +14,7 @@ export interface GithubMetrics {
   stars: number
   openIssues: number
   /**
-   * null when GitHub's search API was unavailable or rate-limited — which is
+   * null when GitHub's search API was unavailable or rate-limited. Which is
    * common, since it allows only 30 requests per minute site-wide. Must never
    * be treated as 0; that would read as "nothing ever gets closed".
    */
@@ -43,7 +43,7 @@ export interface PackageResult {
   trendDates?: string[]
   /**
    * Year-over-year change in downloads, as a percentage. null when the
-   * ecosystem publishes no time series (NuGet) — which is not the same as 0.
+   * ecosystem publishes no time series (NuGet). Which is not the same as 0.
    */
   growthYoY?: number | null
   releasesLastYear?: number | null

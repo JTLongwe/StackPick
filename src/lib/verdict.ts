@@ -5,7 +5,7 @@ import { formatCompact, formatPercent, formatAge, monthsSince } from './format'
  * Turns registry metrics into a recommendation.
  *
  * The scoring is deliberately simple and every component is surfaced in the UI.
- * A verdict is an editorial claim, so it has to show its working — the goal is
+ * A verdict is an editorial claim, so it has to show its working. The goal is
  * "here is what the numbers say", not an oracle. Anything the data can't support
  * becomes a caveat rather than a silent assumption.
  */
@@ -37,7 +37,7 @@ export interface Flag {
 export interface Verdict {
   winner: ScoreBreakdown | null
   runnerUp: ScoreBreakdown | null
-  /** How far apart the top two are — drives whether we call it at all. */
+  /** How far apart the top two are. Drives whether we call it at all. */
   confidence: 'clear' | 'moderate' | 'close'
   headline: string
   reasons: Reason[]
@@ -258,7 +258,7 @@ function buildReasons(
 ): Reason[] {
   const reasons: Reason[] = []
 
-  // Momentum first — it is the signal totals hide, and the reason this tool
+  // Momentum first. It is the signal totals hide, and the reason this tool
   // exists rather than just linking to npm.
   if (winner.growthYoY != null && runnerUp.growthYoY != null) {
     const w = formatPercent(winner.growthYoY)
@@ -270,7 +270,7 @@ function buildReasons(
       })
     } else if (runnerUp.growthYoY > winner.growthYoY + 10) {
       reasons.push({
-        text: `${runnerUp.name} is actually growing faster (${r} vs ${w}) — worth watching.`,
+        text: `${runnerUp.name} is actually growing faster (${r} vs ${w}), so keep an eye on it.`,
         tone: 'neutral',
       })
     }
@@ -318,7 +318,7 @@ function buildReasons(
 
   if (confidence === 'close') {
     reasons.push({
-      text: 'On these metrics the two are within noise of each other — decide on API fit, not numbers.',
+      text: 'These two are close enough that the numbers cannot separate them. Pick on API fit instead.',
       tone: 'neutral',
     })
   }
@@ -341,10 +341,10 @@ function buildCaveats(results: PackageResult[], ecosystem: string): string[] {
   }
 
   if (results.some(r => !r.github)) {
-    caveats.push('GitHub metrics are missing for at least one package, so community signal is weighted down for it.')
+    caveats.push('GitHub data is missing for at least one package, so its score is based on fewer signals than the others.')
   }
 
-  caveats.push('Downloads count CI runs and mirrors as well as humans. Treat this as a starting point, not a decision.')
+  caveats.push('Downloads count CI runs and mirrors as well as people. Use this as a starting point, not the decision.')
 
   return caveats
 }

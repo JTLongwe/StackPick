@@ -44,7 +44,7 @@
             Update comparison
           </button>
           <span v-if="spec.curated && !unchanged" class="editor__warn">
-            This becomes a custom comparison — the notes above won't carry over.
+            This becomes a custom comparison, so the notes above won't carry over.
           </span>
         </div>
       </form>
