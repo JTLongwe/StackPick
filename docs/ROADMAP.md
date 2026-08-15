@@ -5,9 +5,15 @@ new session, without re-deriving anything.
 
 **Status legend:** ⬜ not started · 🟡 in progress · ✅ done
 
+> **Update:** sections 1–3 are now built and verified against the live APIs.
+> Section 0 (the token) is done in Netlify. The measured finding that changed
+> the design: npm's `keywords:` qualifier is AND, not OR, and even with the
+> right syntax its category results are unusable — so categories ship with
+> seeded contenders. See the Risks section, which still stands.
+
 ---
 
-## 0. GITHUB_TOKEN ⬜
+## 0. GITHUB_TOKEN ✅
 
 Not code — do this in the Netlify UI. Everything below degrades without it.
 
@@ -66,7 +72,7 @@ this — the work is making the UI editable rather than adding a second model.
 
 ---
 
-## 1. Live package search ⬜
+## 1. Live package search ✅
 
 ### Why a function rather than calling registries from the browser
 
@@ -138,7 +144,7 @@ Requirements:
 
 ---
 
-## 2. Editable comparison pages ⬜
+## 2. Editable comparison pages ✅
 
 Put the picker **on the comparison page itself**, so a comparison is a live
 query rather than a destination.
@@ -156,7 +162,7 @@ a matter of rendering the picker and pushing selection changes into the query.
 
 ---
 
-## 3. Categories from tags ⬜
+## 3. Categories from tags ✅
 
 ### Where tags come from
 
