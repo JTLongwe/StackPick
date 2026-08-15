@@ -1,33 +1,46 @@
 import type { Handler } from '@netlify/functions';
 
+// A single comparison page asks for a handful of packages. Cap it so the public
+// endpoint can't be turned into a fan-out amplifier against npm/GitHub.
+const MAX_PACKAGES = 8;
+
+const NPM_NAME = /^(?:@[a-z0-9-*~][a-z0-9-*._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/;
+const NUGET_NAME = /^[A-Za-z0-9._-]+$/;
+
 async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 5000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
     clearTimeout(id);
-    return response;
-  } catch (err) {
-    clearTimeout(id);
-    throw err;
   }
 }
 
+/**
+ * `Response.json()` is typed as `unknown`. These payloads come from third-party
+ * registries whose shapes we don't control, so read them loosely and let the
+ * optional chaining below absorb anything missing.
+ */
+const readJson = (res: Response) => res.json() as Promise<any>;
+
 async function getGithubMetrics(repoUrl: string) {
   if (!repoUrl) return null;
-  
+
   // Extract owner and repo from various github URL formats
   const match = repoUrl.match(/github\.com\/([^/]+)\/([^/#?]+)/i);
   if (!match) return null;
-  
-  let owner = match[1];
-  let repo = match[2].replace(/\.git$/, '');
 
-  const headers: HeadersInit = {
+  const owner = encodeURIComponent(match[1]);
+  const repo = encodeURIComponent(match[2].replace(/\.git$/, ''));
+
+  const headers: Record<string, string> = {
     'Accept': 'application/vnd.github.v3+json',
     'User-Agent': 'StackPick-App'
   };
 
+  // Without a token GitHub allows 60 req/hr per IP, and Netlify's egress IPs are
+  // shared — set GITHUB_TOKEN in the site env or these columns will read N/A.
   if (process.env.GITHUB_TOKEN) {
     headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
@@ -35,20 +48,22 @@ async function getGithubMetrics(repoUrl: string) {
   try {
     const [repoRes, issuesRes] = await Promise.all([
       fetchWithTimeout(`https://api.github.com/repos/${owner}/${repo}`, { headers }),
-      fetchWithTimeout(`https://api.github.com/search/issues?q=repo:${owner}/${repo}+type:issue+state:closed`, { headers })
+      fetchWithTimeout(`https://api.github.com/search/issues?q=${encodeURIComponent(`repo:${match[1]}/${match[2].replace(/\.git$/, '')} type:issue state:closed`)}`, { headers })
     ]);
 
     if (!repoRes.ok) return null;
-    
-    const repoData = await repoRes.json();
+
+    const repoData = await readJson(repoRes);
     let closedIssuesCount = 0;
     if (issuesRes.ok) {
-      const issuesData = await issuesRes.json();
+      const issuesData = await readJson(issuesRes);
       closedIssuesCount = issuesData.total_count || 0;
     }
 
     return {
       stars: repoData.stargazers_count,
+      // GitHub's open_issues_count includes open PRs; subtract nothing here, but
+      // it is the same convention shown on the repo page.
       openIssues: repoData.open_issues_count,
       closedIssues: closedIssuesCount,
       archived: repoData.archived,
@@ -62,9 +77,13 @@ async function getGithubMetrics(repoUrl: string) {
 
 async function getBundlephobia(pkgName: string, version: string) {
   try {
-    const res = await fetchWithTimeout(`https://bundlephobia.com/api/size?package=${pkgName}@${version}`, {}, 3000);
+    const res = await fetchWithTimeout(
+      `https://bundlephobia.com/api/size?package=${encodeURIComponent(`${pkgName}@${version}`)}`,
+      {},
+      3000
+    );
     if (!res.ok) return null;
-    const data = await res.json();
+    const data = await readJson(res);
     return {
       size: data.size,
       gzip: data.gzip
@@ -75,27 +94,23 @@ async function getBundlephobia(pkgName: string, version: string) {
   }
 }
 
-// Group daily npm downloads into weekly intervals
-function aggregateNpmDownloads(dailyData: { day: string, downloads: number }[]) {
-  const weekly = [];
-  let currentWeekDownloads = 0;
-  let currentWeekStart = '';
-  
-  for (let i = 0; i < dailyData.length; i++) {
-    const entry = dailyData[i];
-    if (i % 7 === 0) {
-      if (i > 0) {
-        weekly.push({ date: currentWeekStart, downloads: currentWeekDownloads });
-      }
-      currentWeekStart = entry.day;
-      currentWeekDownloads = 0;
-    }
-    currentWeekDownloads += entry.downloads;
+/**
+ * Group daily npm downloads into 7-day buckets.
+ *
+ * Buckets are aligned to the END of the range so the most recent week is always
+ * complete: a trailing partial week would render as a cliff on the trend chart,
+ * and the oldest days are the ones we can afford to drop.
+ */
+function aggregateNpmDownloads(daily: { day: string, downloads: number }[]) {
+  const weekly: { date: string, downloads: number }[] = [];
+  const offset = daily.length % 7;
+
+  for (let i = offset; i + 7 <= daily.length; i += 7) {
+    let total = 0;
+    for (let j = i; j < i + 7; j++) total += daily[j].downloads || 0;
+    weekly.push({ date: daily[i].day, downloads: total });
   }
-  if (currentWeekDownloads > 0 && dailyData.length % 7 !== 0) {
-     // incomplete last week
-     weekly.push({ date: currentWeekStart, downloads: currentWeekDownloads });
-  }
+
   return weekly;
 }
 
@@ -107,25 +122,23 @@ async function fetchNpmData(pkgName: string) {
       fetchWithTimeout(`https://api.npmjs.org/downloads/point/last-week/${pkgName}`)
     ]);
 
-    if (!metaRes.ok) throw new Error(`npm meta failed for ${pkgName}`);
-    
-    const meta = await metaRes.json();
-    const range = rangeRes.ok ? await rangeRes.json() : { downloads: [] };
-    const point = pointRes.ok ? await pointRes.json() : { downloads: 0 };
+    if (!metaRes.ok) throw new Error(`npm meta failed for ${pkgName} (HTTP ${metaRes.status})`);
+
+    const meta = await readJson(metaRes);
+    const range = rangeRes.ok ? await readJson(rangeRes) : { downloads: [] };
+    const point = pointRes.ok ? await readJson(pointRes) : { downloads: 0 };
 
     const latestVersion = meta['dist-tags']?.latest;
     const latestVersionData = meta.versions?.[latestVersion];
-    
     const repoUrl = meta.repository?.url || '';
-    const githubMetrics = await getGithubMetrics(repoUrl);
-    
-    let bundleSize = null;
-    if (latestVersion) {
-      bundleSize = await getBundlephobia(pkgName, latestVersion);
-    }
+
+    // Independent lookups — run them together rather than back to back.
+    const [githubMetrics, bundleSize] = await Promise.all([
+      getGithubMetrics(repoUrl),
+      latestVersion ? getBundlephobia(pkgName, latestVersion) : Promise.resolve(null)
+    ]);
 
     const typesBundled = !!(latestVersionData?.types || latestVersionData?.typings);
-    
     const weeklyTrend = aggregateNpmDownloads(range.downloads || []);
 
     return {
@@ -148,32 +161,29 @@ async function fetchNpmData(pkgName: string) {
 
 async function fetchNugetData(pkgName: string) {
   try {
-    const searchRes = await fetchWithTimeout(`https://azuresearch-usnc.nuget.org/query?q=packageid:${pkgName}&prerelease=false`);
-    if (!searchRes.ok) throw new Error(`nuget search failed for ${pkgName}`);
-    
-    const searchData = await searchRes.json();
+    const searchRes = await fetchWithTimeout(
+      `https://azuresearch-usnc.nuget.org/query?q=packageid:${encodeURIComponent(pkgName)}&prerelease=false`
+    );
+    if (!searchRes.ok) throw new Error(`nuget search failed for ${pkgName} (HTTP ${searchRes.status})`);
+
+    const searchData = await readJson(searchRes);
     const pkgData = searchData.data?.[0];
-    
+
     if (!pkgData) throw new Error(`Package not found: ${pkgName}`);
 
-    const latestVersion = pkgData.version;
-    const totalDownloads = pkgData.totalDownloads;
-    
     const repoUrl = pkgData.projectUrl || '';
     const githubMetrics = await getGithubMetrics(repoUrl);
 
     // Cumulative downloads by version for the chart
     const versions = pkgData.versions || [];
-    const trend = versions.map((v: any) => v.downloads);
-    const trendDates = versions.map((v: any) => v.version);
 
     return {
       name: pkgName,
-      weeklyDownloads: totalDownloads, // Repurposing column for total downloads in NuGet
-      trend,
-      trendDates,
+      weeklyDownloads: pkgData.totalDownloads, // Repurposing column for total downloads in NuGet
+      trend: versions.map((v: any) => v.downloads),
+      trendDates: versions.map((v: any) => v.version),
       lastPublish: null, // NuGet search doesn't easily return last publish date per version in this endpoint
-      latestVersion,
+      latestVersion: pkgData.version,
       typesBundled: null, // Not applicable
       license: pkgData.licenseUrl ? 'See License URL' : null, // Simplification
       github: githubMetrics,
@@ -185,36 +195,52 @@ async function fetchNugetData(pkgName: string) {
   }
 }
 
+const badRequest = (error: string) => ({
+  statusCode: 400,
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ error })
+});
+
 export const handler: Handler = async (event) => {
   const { ecosystem, packages } = event.queryStringParameters || {};
 
   if (!ecosystem || !packages) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Missing ecosystem or packages parameter' })
-    };
+    return badRequest('Missing ecosystem or packages parameter');
+  }
+  if (ecosystem !== 'npm' && ecosystem !== 'nuget') {
+    return badRequest(`Unknown ecosystem: ${ecosystem}`);
   }
 
   const packageList = packages.split(',').map(p => p.trim()).filter(Boolean);
-  
+
   if (packageList.length === 0) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'No packages provided' }) };
+    return badRequest('No packages provided');
+  }
+  if (packageList.length > MAX_PACKAGES) {
+    return badRequest(`Too many packages (max ${MAX_PACKAGES})`);
+  }
+
+  // Names are interpolated into upstream URLs, so accept only the characters the
+  // respective registries actually allow.
+  const pattern = ecosystem === 'npm' ? NPM_NAME : NUGET_NAME;
+  const invalid = packageList.filter(p => !pattern.test(p));
+  if (invalid.length) {
+    return badRequest(`Invalid package name(s): ${invalid.join(', ')}`);
   }
 
   try {
     const results = await Promise.all(
-      packageList.map(pkg => {
-        if (ecosystem === 'npm') return fetchNpmData(pkg);
-        if (ecosystem === 'nuget') return fetchNugetData(pkg);
-        return Promise.resolve({ error: 'Unknown ecosystem' });
-      })
+      packageList.map(pkg =>
+        ecosystem === 'npm' ? fetchNpmData(pkg) : fetchNugetData(pkg)
+      )
     );
 
     return {
       statusCode: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=600, s-maxage=86400, stale-while-revalidate=604800',
+        'Cache-Control': 'public, max-age=600',
+        'Netlify-CDN-Cache-Control': 'public, s-maxage=86400, stale-while-revalidate=604800',
         'Access-Control-Allow-Origin': '*'
       },
       body: JSON.stringify(results)
@@ -223,6 +249,7 @@ export const handler: Handler = async (event) => {
     console.error("Function error:", error);
     return {
       statusCode: 500,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: 'Internal Server Error' })
     };
   }

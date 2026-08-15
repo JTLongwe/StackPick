@@ -27,15 +27,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-
-const modules = import.meta.glob('../content/comparisons/*.yaml', { eager: true })
-const comparisons = Object.values(modules).map((m: any) => m.default || m)
+import { comparisons } from '../content'
+import type { Comparison } from '../types'
 
 const groupedComparisons = computed(() => {
-  const groups: Record<string, any[]> = {}
+  const groups: Record<string, Comparison[]> = {}
   for (const c of comparisons) {
-    if (!groups[c.ecosystem]) groups[c.ecosystem] = []
-    groups[c.ecosystem].push(c)
+    ;(groups[c.ecosystem] ??= []).push(c)
   }
   return Object.entries(groups)
 })

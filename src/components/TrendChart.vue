@@ -34,6 +34,7 @@ import {
   Legend
 } from 'chart.js'
 import { Line } from 'vue-chartjs'
+import type { PackageResult } from '../types'
 
 ChartJS.register(
   CategoryScale,
@@ -47,7 +48,7 @@ ChartJS.register(
 )
 
 const props = defineProps<{
-  results: any[]
+  results: PackageResult[]
   ecosystem: string
 }>()
 
